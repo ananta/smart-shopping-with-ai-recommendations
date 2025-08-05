@@ -3,6 +3,17 @@
 echo "🚀 Starting Smart Shopping AI Application"
 echo "=========================================="
 
+# Check for required API keys
+if [ -z "$OPENAI_API_KEY" ]; then
+    echo "⚠️  Warning: OPENAI_API_KEY not set. Backend will not work without it."
+    echo "   Set it with: export OPENAI_API_KEY='your-key-here'"
+fi
+
+if [ -z "$TAVILY_API_KEY" ]; then
+    echo "⚠️  Warning: TAVILY_API_KEY not set. Product pricing and purchase links will not be available."
+    echo "   Set it with: export TAVILY_API_KEY='your-key-here'"
+fi
+
 # Check if Python is installed
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 is not installed. Please install Python 3 first."

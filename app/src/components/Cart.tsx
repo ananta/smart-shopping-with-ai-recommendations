@@ -28,8 +28,24 @@ const Cart: React.FC<CartProps> = ({ items, onRemoveItem }) => {
               <p className="cart-item-category">{item.category}</p>
               <p className="cart-item-description">{item.description}</p>
               
-              {item.votes && (
-                <span className="cart-item-votes">👍 {item.votes} votes</span>
+              <div className="cart-item-info">
+                {item.votes && (
+                  <span className="cart-item-votes">👍 {item.votes} votes</span>
+                )}
+                {item.price && (
+                  <span className="cart-item-price">💰 {item.price}</span>
+                )}
+              </div>
+              
+              {item.purchaseLink && (
+                <a 
+                  href={item.purchaseLink} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="cart-purchase-link"
+                >
+                  🛒 Buy Now
+                </a>
               )}
             </div>
             

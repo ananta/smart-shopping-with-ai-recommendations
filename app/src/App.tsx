@@ -10,7 +10,12 @@ export interface Product {
   category: string;
   description: string;
   votes?: number;
-  price?: number;
+  price?: string;
+  purchaseLink?: string;
+  availableStores?: Array<{
+    name: string;
+    url: string;
+  }>;
 }
 
 export interface RecommendationResponse {

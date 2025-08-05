@@ -256,8 +256,15 @@ body {
   margin-bottom: 1rem;
 }
 
-.product-votes {
+.product-info {
+  display: flex;
+  gap: 0.5rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.product-votes {
+  margin-bottom: 0;
 }
 
 .votes-badge {
@@ -267,6 +274,73 @@ body {
   border-radius: 20px;
   font-size: 0.8rem;
   font-weight: 500;
+}
+
+.product-price {
+  margin-bottom: 0;
+}
+
+.price-badge {
+  background: #fff3cd;
+  color: #856404;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.purchase-links {
+  margin-bottom: 1rem;
+}
+
+.purchase-button {
+  background: #007bff;
+  color: white;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: inline-block;
+  transition: all 0.3s ease;
+}
+
+.purchase-button:hover {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+.available-stores {
+  margin-bottom: 1rem;
+}
+
+.stores-label {
+  color: #666;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.store-links {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.store-link {
+  background: #f8f9fa;
+  color: #495057;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  border: 1px solid #dee2e6;
+  transition: all 0.3s ease;
+}
+
+.store-link:hover {
+  background: #e9ecef;
+  color: #212529;
 }
 
 .add-to-cart-button {
@@ -383,10 +457,42 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.cart-item-info {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .cart-item-votes {
   color: #28a745;
   font-size: 0.8rem;
   font-weight: 500;
+}
+
+.cart-item-price {
+  color: #856404;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.cart-purchase-link {
+  background: #007bff;
+  color: white;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  display: inline-block;
+  transition: all 0.3s ease;
+  margin-top: 0.5rem;
+}
+
+.cart-purchase-link:hover {
+  background: #0056b3;
+  text-decoration: none;
+  color: white;
 }
 
 .remove-from-cart-button {

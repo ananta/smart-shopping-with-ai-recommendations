@@ -22,6 +22,9 @@ const Recommendations: React.FC<RecommendationsProps> = ({ recommendations, onAd
                 category: category,
                 description: comment.comment || 'No description available',
                 votes: comment.votes || 0,
+                price: comment.pricing?.price || undefined,
+                purchaseLink: comment.pricing?.purchase_link || undefined,
+                availableStores: comment.pricing?.available_stores || undefined,
               });
             }
           });
@@ -33,6 +36,9 @@ const Recommendations: React.FC<RecommendationsProps> = ({ recommendations, onAd
             category: category,
             description: data.comment || 'No description available',
             votes: data.votes || 0,
+            price: data.pricing?.price || undefined,
+            purchaseLink: data.pricing?.purchase_link || undefined,
+            availableStores: data.pricing?.available_stores || undefined,
           });
         }
       }
@@ -65,9 +71,49 @@ const Recommendations: React.FC<RecommendationsProps> = ({ recommendations, onAd
                 
                 <p className="product-description">{product.description}</p>
                 
-                {product.votes && (
-                  <div className="product-votes">
-                    <span className="votes-badge">👍 {product.votes} votes</span>
+                <div className="product-info">
+                  {product.votes && (
+                    <div className="product-votes">
+                      <span className="votes-badge">👍 {product.votes} votes</span>
+                    </div>
+                  )}
+                  
+                  {product.price && (
+                    <div className="product-price">
+                      <span className="price-badge">💰 {product.price}</span>
+                    </div>
+                  )}
+                </div>
+                
+                {product.purchaseLink && (
+                  <div className="purchase-links">
+                    <a 
+                      href={product.purchaseLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="purchase-button"
+                    >
+                      🛒 Buy Now
+                    </a>
+                  </div>
+                )}
+                
+                {product.availableStores && product.availableStores.length > 0 && (
+                  <div className="available-stores">
+                    <p className="stores-label">Available at:</p>
+                    <div className="store-links">
+                      {product.availableStores.slice(0, 2).map((store, index) => (
+                        <a
+                          key={index}
+                          href={store.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="store-link"
+                        >
+                          {store.name}
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
                 

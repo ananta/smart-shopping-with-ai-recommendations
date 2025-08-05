@@ -27,6 +27,7 @@ It will print a sample recommendation summary for an example user goal.
 
 import json
 import os
+import requests
 from typing import TypedDict, List, Dict, Any
 import re
 
@@ -56,6 +57,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 DATA_FILE = os.getenv("DATA_FILE", "mock_data.json")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 with open(DATA_FILE, "r", encoding="utf-8") as f:
     reddit_data: List[Dict[str, Any]] = json.load(f)
@@ -197,16 +199,22 @@ def simple_reddit_retriever(state: ToolkitState) -> ToolkitState:
         comments = _lookup_comments(category)
         if comments:
             best_comment = max(comments, key=lambda c: c.get("votes", 0))
+            
+            # Get pricing and purchase links for the product
+            pricing_info = get_product_pricing_and_links(best_comment["product"], category)
+            
             updated_recs[category] = {
                 "product": best_comment["product"],
                 "comment": best_comment["comment"],
                 "votes": best_comment["votes"],
+                "pricing": pricing_info,
             }
         else:
             updated_recs[category] = {
                 "product": None,
                 "comment": None,
                 "votes": 0,
+                "pricing": None,
                 "message": "No strong Reddit consensus found. Try rephrasing your goal or expanding the category list."
             }
     return {
@@ -349,10 +357,14 @@ def advanced_reddit_retriever(state: ToolkitState) -> ToolkitState:
             # Convert each comment to a structured dict
             recs = []
             for comment in top_comments:
+                # Get pricing and purchase links for each product
+                pricing_info = get_product_pricing_and_links(comment.get("product"), category)
+                
                 recs.append({
                     "product": comment.get("product"),
                     "comment": comment.get("comment"),
                     "votes": comment.get("votes", 0),
+                    "pricing": pricing_info,
                 })
             updated_recs[category] = {
                 "top_comments": recs,
@@ -893,6 +905,116 @@ def ensemble_reddit_retriever(state: ToolkitState) -> ToolkitState:
         **state,
         "recommendations": updated_recs,
     }
+
+
+# -----------------------------------------------------------------------------
+# Tavily API integration for product pricing and purchase links
+# -----------------------------------------------------------------------------
+
+def get_product_pricing_and_links(product_name: str, category: str) -> Dict[str, Any]:
+    """Fetch product pricing and purchase links using Tavily API.
+    
+    Args:
+        product_name: Name of the product to search for
+        category: Product category for context
+        
+    Returns:
+        Dictionary containing pricing info and purchase links
+    """
+    if not TAVILY_API_KEY:
+        return {
+            "price": None,
+            "purchase_link": None,
+            "available_stores": [],
+            "error": "Tavily API key not configured"
+        }
+    
+    try:
+        # Search query for the product
+        search_query = f"{product_name} {category} price buy online"
+        
+        # Tavily search API call
+        url = "https://api.tavily.com/search"
+        headers = {
+            "Authorization": f"Bearer {TAVILY_API_KEY}",
+            "content-type": "application/json"
+        }
+        
+        payload = {
+            "query": search_query,
+            "search_depth": "basic",
+            "include_answer": True,
+            "include_raw_content": False,
+            "max_results": 5
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Extract pricing and purchase information
+        price_info = None
+        purchase_link = None
+        available_stores = []
+        
+        # Look for pricing information in the results
+        for result in data.get("results", []):
+            content = result.get("content", "").lower()
+            url = result.get("url", "")
+            
+            # Look for price patterns
+            import re
+            price_patterns = [
+                r'\$[\d,]+\.?\d*',
+                r'[\d,]+\.?\d*\s*(?:usd|dollars?)',
+                r'price[:\s]*\$?[\d,]+\.?\d*'
+            ]
+            
+            for pattern in price_patterns:
+                price_match = re.search(pattern, content)
+                if price_match and not price_info:
+                    price_info = price_match.group()
+                    break
+            
+            # Look for purchase links (Amazon, Best Buy, etc.)
+            if any(store in url.lower() for store in ['amazon', 'bestbuy', 'walmart', 'target', 'newegg']):
+                if not purchase_link:
+                    purchase_link = url
+                available_stores.append({
+                    "name": result.get("title", "Unknown Store"),
+                    "url": url
+                })
+        
+        # If no specific price found, try to extract from answer
+        if not price_info and data.get("answer"):
+            answer = data.get("answer", "").lower()
+            price_match = re.search(r'\$[\d,]+\.?\d*', answer)
+            if price_match:
+                price_info = price_match.group()
+        
+        return {
+            "price": price_info,
+            "purchase_link": purchase_link,
+            "available_stores": available_stores[:3],  # Limit to top 3 stores
+            "search_results": len(data.get("results", [])),
+            "error": None
+        }
+        
+    except requests.exceptions.RequestException as e:
+        return {
+            "price": None,
+            "purchase_link": None,
+            "available_stores": [],
+            "error": f"API request failed: {str(e)}"
+        }
+    except Exception as e:
+        return {
+            "price": None,
+            "purchase_link": None,
+            "available_stores": [],
+            "error": f"Unexpected error: {str(e)}"
+        }
 
 
 # -----------------------------------------------------------------------------
