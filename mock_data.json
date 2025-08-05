@@ -1,0 +1,122 @@
+[
+  {
+    "category": "espresso machine",
+    "context": [
+      {
+        "product": "Gaggia Classic Pro",
+        "comment": "Best entry-level espresso machine under $500. Great build quality and easy to mod. Perfect for beginners who want to learn proper espresso technique.",
+        "votes": 320
+      },
+      {
+        "product": "Breville Bambino Plus",
+        "comment": "Excellent for milk drinks with automatic steaming. Temperature consistency issues but great for beginners. Good value for the price.",
+        "votes": 280
+      },
+      {
+        "product": "Rancilio Silvia",
+        "comment": "More robust than Gaggia Classic Pro but requires more skill. Excellent temperature stability and build quality. Great for serious enthusiasts.",
+        "votes": 245
+      }
+    ]
+  },
+  {
+    "category": "grinder",
+    "context": [
+      {
+        "product": "1Zpresso JX-Pro",
+        "comment": "Best hand grinder for espresso under $200. Consistent grind size and excellent build quality. Perfect for budget setups.",
+        "votes": 212
+      },
+      {
+        "product": "Timemore C2",
+        "comment": "Good budget option for filter coffee. Not ideal for espresso but great value for pour-over and drip coffee.",
+        "votes": 156
+      },
+      {
+        "product": "Eureka Mignon Notte",
+        "comment": "Best electric grinder for espresso under $400. Quiet operation and consistent grind quality. Great for home use.",
+        "votes": 189
+      }
+    ]
+  },
+  {
+    "category": "headphones",
+    "context": [
+      {
+        "product": "Sony WH-1000XM4",
+        "comment": "Excellent noise cancellation and sound quality. Great for travel and daily use. Battery life is impressive.",
+        "votes": 445
+      },
+      {
+        "product": "Bose QuietComfort 45",
+        "comment": "Superior comfort and noise cancellation. Perfect for long flights. Sound quality is balanced and natural.",
+        "votes": 398
+      },
+      {
+        "product": "Sennheiser HD 660S",
+        "comment": "Open-back headphones with exceptional sound quality. Great for home listening but not for travel due to sound leakage.",
+        "votes": 267
+      }
+    ]
+  },
+  {
+    "category": "backpack",
+    "context": [
+      {
+        "product": "Osprey Atmos AG 65",
+        "comment": "Excellent ventilation and comfort for long hikes. Great suspension system and durable construction. Perfect for multi-day trips.",
+        "votes": 312
+      },
+      {
+        "product": "ULA Circuit",
+        "comment": "Ultralight backpack with great organization. Customizable and durable. Popular among thru-hikers and ultralight enthusiasts.",
+        "votes": 234
+      },
+      {
+        "product": "Gossamer Gear Mariposa",
+        "comment": "Ultralight with good organization. Comfortable for loads up to 30 pounds. Great for fastpacking and ultralight hiking.",
+        "votes": 198
+      }
+    ]
+  },
+  {
+    "category": "laptop",
+    "context": [
+      {
+        "product": "MacBook Air M2",
+        "comment": "Excellent performance and battery life. Perfect for programming and general use. Great build quality and macOS integration.",
+        "votes": 523
+      },
+      {
+        "product": "Dell XPS 13",
+        "comment": "Great Windows alternative to MacBook. Excellent build quality and performance. Good for programming and productivity.",
+        "votes": 387
+      },
+      {
+        "product": "Lenovo ThinkPad X1 Carbon",
+        "comment": "Excellent keyboard and durability. Great for business use and programming. Good performance and battery life.",
+        "votes": 298
+      }
+    ]
+  },
+  {
+    "category": "coffee beans",
+    "context": [
+      {
+        "product": "Stumptown Hair Bender",
+        "comment": "Excellent medium roast with balanced acidity and body. Great for espresso and filter coffee. Consistent quality.",
+        "votes": 156
+      },
+      {
+        "product": "Counter Culture Hologram",
+        "comment": "Complex blend with fruity notes. Great for pour-over and espresso. Good for those who like bright, acidic coffees.",
+        "votes": 134
+      },
+      {
+        "product": "Blue Bottle Giant Steps",
+        "comment": "Rich and chocolatey blend. Perfect for espresso and milk drinks. Great for those who prefer darker roasts.",
+        "votes": 123
+      }
+    ]
+  }
+] 
