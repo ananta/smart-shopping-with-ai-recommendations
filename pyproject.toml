@@ -24,5 +24,10 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "python-dotenv",
-    "faiss-cpu"
+    "faiss-cpu",
+    "scikit-learn",
+    "ragas",
+    "pillow",
+    "datasets",
+    "evaluate"
 ]
