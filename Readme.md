@@ -1,153 +1,285 @@
-Certification Challenge & Demo Day Project Report
-This report summarises the deliverables for the Certification Challenge and outlines the progress made towards a demo‑day ready application. It follows the seven tasks defined in the assignment, covering problem definition, solution design, data handling, prototype implementation, evaluation, advanced retrieval techniques and performance assessment.
+# Smart Shopping AI with AI Recommendations
 
-Task 1 – Defining the Problem and Audience
-Problem
-Hobbyists researching specialised products (espresso machines, noise‑cancelling headphones and lightweight hiking gear) spend hours combing through Reddit posts and forum threads to find trustworthy advice. Community opinions are scattered across long comment chains, making it difficult to synthesise a consensus. Newcomers may not know which keywords to search for and experienced users must read dozens of comments to identify patterns. The result is an inefficient discovery process and a risk of suboptimal purchases.
+A full-stack application that provides intelligent product recommendations based on user goals and community feedback. The system uses AI to analyze user requirements and suggest the best products from curated community data.
 
-Audience
-The target users are DIY enthusiasts and hobbyists who prefer peer recommendations over marketing copy. They include home baristas looking for budget espresso setups, audiophiles seeking value headphones and backpackers building ultralight rigs. These users typically pursue their hobbies outside of work and want to minimise research time so they can focus on their passion. When presented with the idea of an assistant that digests community wisdom and surfaces the most‑upvoted products, they respond positively and recognise the time‑saving value.
+## 🚀 Features
 
-Task 2 – Proposed Solution
-Solution Overview
-The application will serve as a community‑aware recommender. It will ingest Reddit threads where users ask for advice (e.g., “Best espresso machine under \$500?”), extract comments that mention products and the reasoning behind those recommendations, and store them in a vector database. When a user submits a goal like “I want to build a budget espresso station,” a multi‑agent workflow will:
+- **AI-Powered Recommendations**: Uses LangChain and OpenAI to analyze user goals and provide personalized product suggestions
+- **Community-Driven Data**: Recommendations based on real community feedback and voting
+- **Modern React Frontend**: Beautiful, responsive UI with shopping cart functionality
+- **FastAPI Backend**: Robust API with multiple retrieval strategies
+- **Multiple Retrieval Methods**: Supports various AI retrieval techniques (semantic, lexical, TF-IDF, BM25, etc.)
 
-Analyse the goal to map it to one or more predefined categories (e.g., Espresso Machines).
+## 🏗️ Architecture
 
-Retrieve the highest‑scoring community comments from the database for each category.
+```
+smart-shopping-with-ai-recommendations/
+├── main.py                 # FastAPI backend server
+├── mock_data.json          # Sample product data
+├── requirements.txt        # Python dependencies
+├── start-app.sh           # Quick start script
+├── app/                   # React frontend
+│   ├── src/
+│   │   ├── components/    # React components
+│   │   ├── App.tsx       # Main app component
+│   │   └── App.css       # Modern styling
+│   └── package.json       # Node.js dependencies
+└── data/                  # Data files
+    └── reddit-data.json   # Additional sample data
+```
 
-Synthesize a concise summary that recommends products and explains the rationale, citing the source comments to build trust.
+## 🛠️ Technology Stack
 
-The user experience is simple: type a goal and receive a curated list of products with a short explanation. The pipeline saves users hours of manual research and grounds its advice in real community discussions.
+### Backend
+- **FastAPI**: Modern Python web framework
+- **LangChain**: AI/LLM orchestration
+- **OpenAI**: GPT-4 for goal analysis and synthesis
+- **scikit-learn**: TF-IDF and similarity calculations
+- **Uvicorn**: ASGI server
 
-Tool Stack
-Layer Tool/Framework Rationale
-Large Language Model OpenAI GPT‑4 or Claude 3 Powerful reasoning and summarisation capabilities provide high‑quality category analysis and synthesis
-a16z.com
-.
-Embedding Model text‑embedding‑3‑small (OpenAI) Off‑the‑shelf embeddings are easy to use and work well on short Reddit comments
-a16z.com
-.
-Orchestration LangChain + LangGraph Simplifies prompt chaining, tool calls and agent workflows, allowing modular development
-a16z.com
-.
-Vector Database FAISS/Chroma (prototype) → Pinecone/Weaviate (production) Local stores are easy to set up; managed services scale reliably
-a16z.com
-.
-Monitoring LangSmith or custom logging Provides trace inspection, latency measurement and error monitoring.
-Evaluation RAGAS Enables measurement of faithfulness, relevance, context precision and recall.
-User Interface FastAPI + React/Streamlit FastAPI exposes a local endpoint; a lightweight front‑end offers an interactive user experience.
-Serving/Inference Modal/Vercel/AWS (future) For scaling the application beyond a local prototype.
+### Frontend
+- **React 18**: Modern React with TypeScript
+- **Modern CSS**: Flexbox, Grid, animations
+- **Fetch API**: Backend communication
 
-Agentic Reasoning
-Goal analyser – A prompt to the LLM that maps a free‑form goal to one or more categories (e.g., Espresso Machines, Headphones, Hiking Gear). The prompt lists available categories and instructs the model to return only category names.
+## 📦 Installation
 
-Retriever – Given the categories, this agent queries the vector database to fetch the top community comments. In the naive version it returns the highest‑voted comment; the advanced version uses hybrid search and MMR to return multiple comments.
+### Prerequisites
+- Python 3.8+
+- Node.js 16+
+- OpenAI API key
+- Tavily API key (for product pricing and purchase links)
 
-Synthesiser – Takes the retrieved comment objects (product, votes and snippet) and composes a user‑friendly recommendation summary, citing the community reasoning.
+### Quick Start
 
-This separation of concerns follows best practices for multi‑step prompting and retrieval
-a16z.com
-.
+1. **Clone and setup**:
+```bash
+git clone <repository-url>
+cd smart-shopping-with-ai-recommendations
+```
 
-Task 3 – Dealing with the Data
-Data Sources and External APIs
-Source/API Role
-Reddit (Pushshift/official API) Primary source of user queries and comments. Posts are scraped to extract product recommendations and votes.
-SERP/Tavily Optional: fetch additional product information, such as specifications and professional reviews, to enrich responses.
-mock_data.json A curated JSON file containing three representative scenarios used for prototyping. It captures the query, the context (comment text, product and vote count), the category and the subreddit.
+2. **Set up environment variables**:
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+export TAVILY_API_KEY="your-tavily-api-key"
+```
 
-Chunking Strategy
-Reddit comments tend to be short, so each comment is stored as a single document. For longer texts (e.g., user manuals) the system uses a recursive character splitter with a chunk size of ~750 tokens and an overlap of 100 tokens. This maintains semantic coherence while enabling efficient embedding
-a16z.com
-.
+3. **Run the application**:
+```bash
+./start-app.sh
+```
 
-Additional Data Requirements
-Product metadata – For future versions, integrate pricing and availability from e‑commerce APIs (e.g., Amazon or Best Buy).
+This will:
+- Install Python dependencies
+- Install React dependencies
+- Start the backend server on http://localhost:8000
+- Start the React app on http://localhost:3000
 
-Synonym dictionary – Maintain a mapping of category synonyms (e.g., “espresso maker” ↔ “espresso machine”) to improve retrieval.
+### Manual Setup
 
-Task 4 – Prototype Implementation
-We built an end‑to‑end prototype using LangGraph and FastAPI. The workflow is as follows:
+#### Backend Setup
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
-Load data – Read mock_data.json to access the pre‑curated Reddit scenarios.
+#### Frontend Setup
+```bash
+cd app
+npm install
+npm start
+```
 
-Index comments – Create an in‑memory index keyed by category. Each entry contains a product name, comment text and vote count. The index can be replaced later by a vector store.
+## 🎯 Usage
 
-Graph pipeline – Build a three‑node LangGraph:
+### Using the Web Interface
 
-Goal analyser – Uses GPT‑4 to classify the user’s goal into categories.
+1. **Open the app**: Navigate to http://localhost:3000
+2. **Enter your goal**: Use the large text area to describe what you're looking for
+3. **Get recommendations**: Click "Get Recommendations" to receive AI-powered suggestions
+4. **Add to cart**: Click "Add to Cart" on products you're interested in
+5. **Manage cart**: View and manage your selected items in the cart sidebar
 
-Retriever – Looks up the highest‑voted comment(s) per category and returns structured data (product, comment, votes). An environment variable selects between naive (top‑1) and advanced retrieval (top‑2 with MMR and lexical filtering).
+### Example Prompts
 
-Synthesiser – Converts the structured recommendations into a friendly narrative.
+- "I want to set up a budget home espresso station under $500"
+- "Looking for noise-cancelling headphones for travel under $200"
+- "Need an ultralight backpack for thru-hiking"
+- "Want a reliable laptop for programming and gaming"
 
-FastAPI endpoint – Expose a POST endpoint /recommend that accepts a user_goal and returns the categories, structured recommendations and the final summary.
+### API Usage
 
-The resulting API lets a user query for “Best budget espresso setup” and receives a list of relevant categories with top community‑endorsed products and the reasoning behind them.
+The backend provides a REST API at `http://localhost:8000/recommend`:
 
-Task 5 – Golden Test Data Set and Baseline Evaluation
-Test Set
-We created a synthetic golden dataset of three typical queries: (1) “What’s the best espresso machine under \$500?”, (2) “Best budget noise‑cancelling headphones?” and (3) “Good lightweight hiking backpack for multi‑day treks?”. For each query we defined the expected product and a short justification based on our mock data.
+**Features:**
+- AI-powered product recommendations based on user goals
+- Real-time pricing information via Tavily API
+- Purchase links to major retailers (Amazon, Best Buy, Walmart, etc.)
+- Community voting data from Reddit-style recommendations
 
-Evaluation Method
-Because the full RAGAS library cannot be executed here, we manually assessed our pipeline using RAGAS‑style metrics:
+```bash
+curl -X POST "http://localhost:8000/recommend" \
+  -H "Content-Type: application/json" \
+  -d '{"user_goal": "I want to set up a budget home espresso station under $500"}'
+```
 
-Faithfulness – Does the summary faithfully reflect retrieved comments?
+Response:
+```json
+{
+  "user_goal": "I want to set up a budget home espresso station under $500",
+  "categories": ["espresso machine", "grinder"],
+  "recommendations": {
+    "espresso machine": {
+      "top_comments": [
+        {
+          "product": "Gaggia Classic Pro",
+          "comment": "Best entry-level espresso machine under $500...",
+          "votes": 320,
+          "pricing": {
+            "price": "$399.99",
+            "purchase_link": "https://amazon.com/...",
+            "available_stores": [
+              {"name": "Amazon", "url": "https://amazon.com/..."},
+              {"name": "Best Buy", "url": "https://bestbuy.com/..."}
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "summary": "Based on your goal of setting up a budget home espresso station..."
+}
+```
 
-Response relevance – Does the answer address the query?
+## 🔧 Configuration
 
-Context precision – How much of the retrieved comment is on topic?
+### Environment Variables
 
-Context recall – How much relevant community knowledge is surfaced?
+- `OPENAI_API_KEY`: Your OpenAI API key (required)
+- `DATA_FILE`: Path to data file (default: `mock_data.json`)
+- `RETRIEVER_STRATEGY`: Retrieval method to use (default: `naive`)
 
-Baseline (Naïve Retrieval) Results
-Query Faithfulness Response relevance Context precision Context recall Notes
-Q1 (espresso) 1.00 0.90 0.72 0.60 Uses only the top‑voted comment (Gaggia Classic Pro).
-Q2 (headphones) 0.95 0.88 0.68 0.58 Returns the Anker Soundcore Q30 but ignores the Sony WH‑CH720N.
-Q3 (hiking backpack) 1.00 0.93 0.74 0.65 Highlights the Osprey Exos 48 but does not mention the ULA Circuit.
+### Retrieval Strategies
 
-Observations: The naïve approach provides highly faithful answers because they quote real comments. However, context recall is low because only one comment per category is surfaced, and context precision suffers when comments include extraneous details.
+The backend supports multiple retrieval strategies:
 
-Task 6 – Advanced Retrieval Techniques
-To improve retrieval and generation, we explored several techniques:
+- `naive`: Simple top-vote selection
+- `advanced`: Top-2 vote-based retrieval
+- `lexical`: Lexical overlap scoring
+- `semantic`: OpenAI embedding similarity
+- `tfidf`: TF-IDF cosine similarity
+- `bm25`: BM25 ranking
+- `mmr`: Maximal Marginal Relevance
+- `ensemble`: Combined lexical + TF-IDF
 
-Top‑k voting aggregation – Fetch the top‑2 highest‑voted comments and aggregate their insights. This increases recall and provides more balanced advice.
+Set the strategy:
+```bash
+export RETRIEVER_STRATEGY="semantic"
+```
 
-Hybrid lexical/semantic search – Combine lexical weighting (BM25) with vote counts to rank comments, ensuring that the result mentions the query terms and has community support.
+## 📊 Data Structure
 
-Maximal marginal relevance (MMR) – Select multiple comments while penalising redundancy, improving context precision by promoting diversity.
+The system uses JSON data with the following structure:
 
-Fine‑tuned embeddings – Train an embedding model on scraped Reddit comments to better capture domain‑specific terms and synonyms.
+```json
+[
+  {
+    "category": "espresso machine",
+    "context": [
+      {
+        "product": "Gaggia Classic Pro",
+        "comment": "Best entry-level espresso machine...",
+        "votes": 320
+      }
+    ]
+  }
+]
+```
 
-Query rewriting – Use the LLM to generate synonyms and related terms (e.g., “noise‑cancelling” → “ANC”) before retrieval, enhancing lexical search coverage.
+## 🎨 Frontend Components
 
-These strategies can be layered. For example, hybrid search generates a candidate set, MMR selects diverse comments, and top‑k aggregation combines them for summarisation. Fine‑tuned embeddings and query rewriting further improve semantic recall.
+### ProductPrompt
+- Large text area for user input
+- Example prompts for guidance
+- Loading states and validation
 
-Task 7 – Performance Assessment
-We integrated the first three techniques (top‑2 aggregation, hybrid lexical search and MMR) into our retriever and re‑evaluated the same golden dataset. The table below compares the naïve and advanced strategies:
+### Recommendations
+- Displays AI recommendations
+- Product cards with voting information
+- Add to cart functionality
 
-Metric Naïve Advanced Δ (change) Interpretation
-Faithfulness 1.00 1.00 0.00 Both methods quote genuine comments, so truthfulness stays perfect.
-Response relevance 0.90 0.95 +0.05 More comments allow the synthesiser to match query nuances (e.g., ease of use vs. durability).
-Context precision 0.69 0.80 +0.11 MMR reduces redundancy and lexical filtering removes off‑topic remarks.
-Context recall 0.61 0.90 +0.29 Aggregating multiple comments surfaces more relevant knowledge.
+### Cart
+- Shopping cart management
+- Remove items functionality
+- Clear cart option
 
-Conclusions: The advanced retriever dramatically increases context recall while maintaining faithfulness. Response relevance and precision also improve due to better ranking and diversity. This demonstrates that retrieval quality directly influences generation quality, echoing the principle “as goes retrieval, so goes generation.” Future iterations should incorporate fine‑tuned embeddings and query rewriting to capture synonyms and domain‑specific jargon.
+## 🔍 Advanced Features
 
-Future Work
-To transform this prototype into a production‑ready application and prepare for Demo Day, we plan to:
+### Multiple Retrieval Methods
+The backend implements various information retrieval techniques:
 
-Scrape real data – Replace mock_data.json with posts from the Pushshift/Reddit API, clean and normalise the comments and map them to categories.
+1. **Simple Reddit Retriever**: Basic vote-based selection
+2. **Lexical Retriever**: Keyword overlap scoring
+3. **Semantic Retriever**: OpenAI embedding similarity
+4. **TF-IDF Retriever**: Vector-based similarity
+5. **BM25 Retriever**: Advanced ranking algorithm
+6. **MMR Retriever**: Diversity-aware selection
+7. **Ensemble Retriever**: Combined scoring methods
 
-Fine‑tune embeddings – Train a domain‑specific embedding model on the scraped comments to improve semantic retrieval.
+### LangGraph Workflow
+The system uses LangGraph for structured AI workflows:
 
-Expand categories – Add more hobby domains (mechanical keyboards, guitars, monitors, etc.) and update the category analyser accordingly.
+1. **Goal Analysis**: Extract shopping categories from user input
+2. **Retrieval**: Find relevant products using selected strategy
+3. **Synthesis**: Generate natural language recommendations
 
-Enhance UI – Build an interactive front‑end with filtering (budget range, brand, features) and visualisation of product popularity and sentiment. Adopt React or Streamlit for rapid prototyping.
+## 🚀 Deployment
 
-Evaluate with RAGAS – Automate evaluation on a larger test set using RAGAS to track metrics over time and guide model improvements.
+### Backend Deployment
+```bash
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
-Deploy – Host the application on a scalable platform (e.g., Vercel or AWS) and integrate authentication and logging for user safety and analytics.
+### Frontend Deployment
+```bash
+cd app
+npm run build
+# Deploy the build/ folder to your hosting service
+```
 
-By following this roadmap, we will deliver a polished product that not only meets the certification requirements but also provides genuine value to hobbyists seeking trustworthy product advice.
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **CORS Errors**: Backend includes CORS middleware for localhost:3000
+2. **API Key Issues**: Ensure OPENAI_API_KEY is set correctly
+3. **Port Conflicts**: Backend runs on 8000, frontend on 3000
+4. **Data File**: Ensure mock_data.json exists in project root
+
+### Debug Mode
+
+Enable debug logging:
+```bash
+export LOG_LEVEL=DEBUG
+python main.py
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+## 🙏 Acknowledgments
+
+- OpenAI for GPT-4 API
+- LangChain for AI orchestration
+- FastAPI for the backend framework
+- React team for the frontend framework

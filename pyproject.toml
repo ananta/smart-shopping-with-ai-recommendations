@@ -29,5 +29,6 @@ dependencies = [
     "ragas",
     "pillow",
     "datasets",
-    "evaluate"
+    "evaluate",
+    "rapidfuzz"
 ]

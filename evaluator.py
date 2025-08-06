@@ -19,6 +19,7 @@ query and computes approximate metrics.  Results are printed to stdout.
 
 import sys
 import re
+from dotenv import load_dotenv
 try:
     from langchain_openai import OpenAIEmbeddings
 except ImportError:
@@ -42,6 +43,7 @@ import os
 # Data loading and indexing
 # -----------------------------------------------------------------------------
 
+load_dotenv()
 # Determine which data file to use.  If the caller has set ``DATA_FILE`` in
 # the environment then use that, otherwise default to ``mock_data.json``.
 DATA_FILE = os.getenv("DATA_FILE", "mock_data.json")
