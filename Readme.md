@@ -1,285 +1,167 @@
-# Smart Shopping AI with AI Recommendations
+# Smart Shopping AI - Certification Challenge Report
 
-A full-stack application that provides intelligent product recommendations based on user goals and community feedback. The system uses AI to analyze user requirements and suggest the best products from curated community data.
+## Task 1: Defining your Problem and Audience
 
-## 🚀 Features
+### Problem Description
+**Problem**: Consumers struggle to find the best products that match their specific needs, budget, and preferences due to information overload and lack of personalized recommendations from trusted sources.
 
-- **AI-Powered Recommendations**: Uses LangChain and OpenAI to analyze user goals and provide personalized product suggestions
-- **Community-Driven Data**: Recommendations based on real community feedback and voting
-- **Modern React Frontend**: Beautiful, responsive UI with shopping cart functionality
-- **FastAPI Backend**: Robust API with multiple retrieval strategies
-- **Multiple Retrieval Methods**: Supports various AI retrieval techniques (semantic, lexical, TF-IDF, BM25, etc.)
+### Why This is a Problem
+Consumers face significant challenges when making purchasing decisions. They often spend hours researching products across multiple websites, reading conflicting reviews, and comparing prices without having access to community-driven insights. The current e-commerce landscape provides generic recommendations that don't account for individual use cases, budgets, or specific requirements. Users need a solution that combines AI-powered analysis with community consensus to provide personalized, trustworthy product recommendations that save time and lead to better purchasing decisions.
 
-## 🏗️ Architecture
+**Target User**: Budget-conscious consumers who want to make informed purchasing decisions, particularly those researching specific product categories like home espresso equipment, headphones, laptops, or outdoor gear. These users value community feedback and want to ensure they're getting the best value for their money.
 
-```
-smart-shopping-with-ai-recommendations/
-├── main.py                 # FastAPI backend server
-├── mock_data.json          # Sample product data
-├── requirements.txt        # Python dependencies
-├── start-app.sh           # Quick start script
-├── app/                   # React frontend
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── App.tsx       # Main app component
-│   │   └── App.css       # Modern styling
-│   └── package.json       # Node.js dependencies
-└── data/                  # Data files
-    └── reddit-data.json   # Additional sample data
-```
+## Task 2: Propose a Solution
 
-## 🛠️ Technology Stack
+### Proposed Solution
+Smart Shopping AI is an intelligent recommendation system that combines AI-powered goal analysis with community-driven product insights and real-time pricing data. The application allows users to describe their needs in natural language (e.g., "I want to set up a budget home espresso station under $500"), analyzes their requirements using LLM reasoning, retrieves relevant community recommendations, and provides real-time pricing and purchase links.
 
-### Backend
-- **FastAPI**: Modern Python web framework
-- **LangChain**: AI/LLM orchestration
-- **OpenAI**: GPT-4 for goal analysis and synthesis
-- **scikit-learn**: TF-IDF and similarity calculations
-- **Uvicorn**: ASGI server
+**User Experience**: Users interact with a large, intuitive text prompt where they describe their shopping goals. The system then provides a comprehensive analysis including categorized recommendations, community voting data, real-time pricing, and direct purchase links. Users can add products to a shopping cart and manage their selections, creating a seamless shopping experience that bridges the gap between research and purchase.
 
-### Frontend
-- **React 18**: Modern React with TypeScript
-- **Modern CSS**: Flexbox, Grid, animations
-- **Fetch API**: Backend communication
+### Technology Stack
 
-## 📦 Installation
+1. **LLM**: OpenAI GPT-4o - Chosen for its superior reasoning capabilities in analyzing user goals and synthesizing recommendations
+2. **Embedding Model**: OpenAI text-embedding-3-small - Selected for semantic similarity matching between user queries and product descriptions
+3. **Orchestration**: LangGraph - Used for structured workflow management and state transitions between analysis, retrieval, and synthesis
+4. **Vector Database**: FAISS (in-memory) - Chosen for fast similarity search and easy deployment
+5. **Evaluation**: Custom RAGAS like framework (had issues with ragas integration, so this one is pending) 
+6. **User Interface**: React with TypeScript - Modern, responsive web interface with real-time feedback
+7. **Serving & Inference**: FastAPI with Uvicorn - High-performance async API server
 
-### Prerequisites
-- Python 3.8+
-- Node.js 16+
-- OpenAI API key
-- Tavily API key (for product pricing and purchase links)
+### Agentic Reasoning Implementation
+The application uses a multi-agent approach with LangGraph:
+- **Goal Analysis Agent**: Analyzes user input to extract relevant product categories
+- **Retrieval Agent**: Implements multiple retrieval strategies (semantic, lexical, TF-IDF, BM25) to find relevant products
+- **Synthesis Agent**: Combines recommendations with pricing data to generate natural language summaries
+- **Pricing Agent**: Uses Tavily API to fetch real-time pricing and purchase links
 
-### Quick Start
+## Task 3: Dealing with the Data
 
-1. **Clone and setup**:
-```bash
-git clone <repository-url>
-cd smart-shopping-with-ai-recommendations
-```
+### Data Sources and External APIs
 
-2. **Set up environment variables**:
-```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export TAVILY_API_KEY="your-tavily-api-key"
-```
+1. **Community Product Data** (`mock_data.json`): Curated dataset of product recommendations with community voting, including categories like espresso machines, grinders, headphones, backpacks, laptops, and coffee beans. Each entry contains product name, community comment, and vote count.
 
-3. **Run the application**:
-```bash
-./start-app.sh
-```
+2. **Tavily Search API**: Used to fetch real-time pricing information and purchase links from major retailers (Amazon, Best Buy, Walmart, Target, Newegg). This provides current pricing data and direct purchase links.
 
-This will:
-- Install Python dependencies
-- Install React dependencies
-- Start the backend server on http://localhost:8000
-- Start the React app on http://localhost:3000
+3. **Reddit-style Data** (`reddit-data.json`): Additional community-driven product recommendations with timestamps and subreddit context.
 
-### Manual Setup
+### Chunking Strategy
+**Default Strategy**: Semantic chunking with overlap. Products are chunked at the individual recommendation level, preserving the complete context of each product recommendation including the community comment, vote count, and category. This approach maintains the integrity of community feedback while enabling semantic search.
 
-#### Backend Setup
-```bash
-pip install -r requirements.txt
-python main.py
-```
+**Rationale**: This chunking strategy preserves the full context of each recommendation, allowing the system to understand not just what product is recommended, but why it's recommended and how the community feels about it. The overlap ensures that related concepts aren't split across chunks.
 
-#### Frontend Setup
-```bash
-cd app
-npm install
-npm start
-```
+### Additional Data Requirements
+- **User interaction logs**: To improve recommendations based on user behavior
+- **Price history data**: To track price trends and provide better value recommendations
+- **Product specifications**: For more detailed filtering and comparison capabilities
 
-## 🎯 Usage
+## Task 4: Building a Quick End-to-End Agentic RAG Prototype
 
-### Using the Web Interface
+### Implementation Details
 
-1. **Open the app**: Navigate to http://localhost:3000
-2. **Enter your goal**: Use the large text area to describe what you're looking for
-3. **Get recommendations**: Click "Get Recommendations" to receive AI-powered suggestions
-4. **Add to cart**: Click "Add to Cart" on products you're interested in
-5. **Manage cart**: View and manage your selected items in the cart sidebar
+The prototype has been successfully built and deployed as a local endpoint with the following architecture:
 
-### Example Prompts
+**Backend (FastAPI)**:
+- Endpoint: `http://localhost:8000/recommend`
+- LangGraph workflow with three main nodes: goal analysis, retrieval, synthesis
+- Multiple retrieval strategies (naive, advanced, semantic, lexical, TF-IDF, BM25, MMR, ensemble)
+- Tavily API integration for real-time pricing and purchase links
 
+**Frontend (React)**:
+- Modern UI with large prompt input area
+- Real-time recommendations display with pricing and purchase links
+- Shopping cart functionality
+- Responsive design for all devices
+
+**Key Features Implemented**:
+- Natural language goal analysis
+- Community-driven product recommendations
+- Real-time pricing via Tavily API
+- Direct purchase links to major retailers
+- Shopping cart management
+- Multiple retrieval strategies
+- Error handling and loading states
+
+## Task 5: Creating a Golden Test Data Set
+
+### Performance Analysis
+
+**Key Insights**:
+- Community voting data provides strong grounding for recommendations
+- Room for improvement in retrieval precision through advanced techniques
+- Real-time pricing integration enhances the user experience significantly
+
+## Task 6: The Benefits of Advanced Retrieval
+
+### Advanced Retrieval Techniques Implemented
+
+1. **Semantic Retrieval**: Uses OpenAI embeddings for semantic similarity matching. Useful for capturing meaning beyond exact keyword matches.
+
+2. **Lexical Retrieval**: Implements keyword overlap scoring. Useful for specific product names and technical terms.
+
+3. **TF-IDF Retrieval**: Uses TF-IDF vectorization with cosine similarity. Useful for balancing term frequency with document importance.
+
+4. **BM25 Retrieval**: Implements BM25 ranking algorithm. Useful for better handling of document length and term frequency.
+
+5. **MMR (Maximal Marginal Relevance)**: Balances relevance with diversity. Useful for providing varied recommendations.
+
+6. **Ensemble Retrieval**: Combines lexical and TF-IDF scores. Useful for robust performance across different query types.
+
+7. **Multi-Query Retrieval**: Uses query expansion with synonyms. Useful for handling different ways users express the same need.
+
+8. **Parent Document Retrieval**: Aggregates category-level documents. Useful for broad category matching.
+
+### Testing Results
+
+Each retrieval technique was tested with sample queries:
 - "I want to set up a budget home espresso station under $500"
 - "Looking for noise-cancelling headphones for travel under $200"
 - "Need an ultralight backpack for thru-hiking"
-- "Want a reliable laptop for programming and gaming"
 
-### API Usage
+**Performance Comparison**:
+- **Semantic Retrieval**: Best for understanding user intent and context
+- **Lexical Retrieval**: Best for exact product name matching
+- **Ensemble Retrieval**: Most robust across different query types
+- **MMR Retrieval**: Best for providing diverse recommendations
 
-The backend provides a REST API at `http://localhost:8000/recommend`:
+## Task 7: Assessing Performance
 
-**Features:**
-- AI-powered product recommendations based on user goals
-- Real-time pricing information via Tavily API
-- Purchase links to major retailers (Amazon, Best Buy, Walmart, etc.)
-- Community voting data from Reddit-style recommendations
+I didn't use RAGAS for this one because our product recommendation app relies heavily on Reddit-based community wisdon, where the value lies not jsut in factual correctness but in user concsensus, voting patterns and contexttual nuance.
 
-```bash
-curl -X POST "http://localhost:8000/recommend" \
-  -H "Content-Type: application/json" \
-  -d '{"user_goal": "I want to set up a budget home espresso station under $500"}'
-```
+But, in future, I'll replace my custom evaluator with ragas for syntehtic test set generation and baseline comparision for quantitivie scoring.
 
-Response:
-```json
-{
-  "user_goal": "I want to set up a budget home espresso station under $500",
-  "categories": ["espresso machine", "grinder"],
-  "recommendations": {
-    "espresso machine": {
-      "top_comments": [
-        {
-          "product": "Gaggia Classic Pro",
-          "comment": "Best entry-level espresso machine under $500...",
-          "votes": 320,
-          "pricing": {
-            "price": "$399.99",
-            "purchase_link": "https://amazon.com/...",
-            "available_stores": [
-              {"name": "Amazon", "url": "https://amazon.com/..."},
-              {"name": "Best Buy", "url": "https://bestbuy.com/..."}
-            ]
-          }
-        }
-      ]
-    }
-  },
-  "summary": "Based on your goal of setting up a budget home espresso station..."
-}
-```
+### Performance Comparison Results
+| Retriever           | Faithfulness (F) | Response Relevance (R) | Context Precision (P) | Context Recall (Rc) |
+|---------------------|------------------|--------------------------|------------------------|----------------------|
+| Naïve               | 0.67             | 0.33                     | 0.05                   | 0.17                 |
+| Advanced            | 0.67             | 0.33                     | 0.05                   | 0.17                 |
+| Lexical             | 0.67             | 0.00                     | 0.09                   | 0.00                 |
+| MMR                 | 0.67             | 0.00                     | 0.09                   | 0.00                 |
+| Semantic            | 0.67             | 0.00                     | 0.06                   | 0.00                 |
+| TF‑IDF              | 0.67             | 0.33                     | 0.08                   | 0.17                 |
+| BM25                | 0.67             | 0.00                     | 0.09                   | 0.00                 |
+| Compression         | 0.67             | 0.33                     | 0.06                   | 0.04                 |
+| Multi‑Query         | 0.67             | 0.00                     | 0.09                   | 0.00                 |
+| Parent              | 0.67             | 0.33                     | 0.05                   | 0.17                 |
+| Ensemble            | 0.67             | 0.00                     | 0.10                   | 0.00                 |
 
-## 🔧 Configuration
 
-### Environment Variables
+### Performance Improvements
 
-- `OPENAI_API_KEY`: Your OpenAI API key (required)
-- `DATA_FILE`: Path to data file (default: `mock_data.json`)
-- `RETRIEVER_STRATEGY`: Retrieval method to use (default: `naive`)
+| Metric                     | **Parent Retriever** | **Semantic Retriever** | **Improvement** |
+| -------------------------- | -------------------- | ---------------------- | --------------- |
+| **Faithfulness (F)**       | 0.67                 | 0.67                   | 0%              |
+| **Response Relevance (R)** | 0.33                 | 0.00                   | **+33%**        |
+| **Context Precision (P)**  | 0.05                 | 0.06                   | -0.01 (-1%)     |
+| **Context Recall (Rc)**    | 0.17                 | 0.00                   | **+17%**        |
 
-### Retrieval Strategies
+- ✅ Parent Retriever is clearly superior for Reddit-style community recommendations.
+- ❌ Semantic Retriever fails to retrieve relevant or complete context in this use case.
+- 🔍 Despite slightly better precision, Semantic Retriever misses critical recall and relevance, making it unsuitable for your product-focused application.
 
-The backend supports multiple retrieval strategies:
 
-- `naive`: Simple top-vote selection
-- `advanced`: Top-2 vote-based retrieval
-- `lexical`: Lexical overlap scoring
-- `semantic`: OpenAI embedding similarity
-- `tfidf`: TF-IDF cosine similarity
-- `bm25`: BM25 ranking
-- `mmr`: Maximal Marginal Relevance
-- `ensemble`: Combined lexical + TF-IDF
+### Planned Improvements for Second Half
 
-Set the strategy:
-```bash
-export RETRIEVER_STRATEGY="semantic"
-```
+The Smart Shopping AI system demonstrates the power of combining AI reasoning with community insights and real-time data to create a comprehensive shopping recommendation platform that addresses real user needs. 
 
-## 📊 Data Structure
-
-The system uses JSON data with the following structure:
-
-```json
-[
-  {
-    "category": "espresso machine",
-    "context": [
-      {
-        "product": "Gaggia Classic Pro",
-        "comment": "Best entry-level espresso machine...",
-        "votes": 320
-      }
-    ]
-  }
-]
-```
-
-## 🎨 Frontend Components
-
-### ProductPrompt
-- Large text area for user input
-- Example prompts for guidance
-- Loading states and validation
-
-### Recommendations
-- Displays AI recommendations
-- Product cards with voting information
-- Add to cart functionality
-
-### Cart
-- Shopping cart management
-- Remove items functionality
-- Clear cart option
-
-## 🔍 Advanced Features
-
-### Multiple Retrieval Methods
-The backend implements various information retrieval techniques:
-
-1. **Simple Reddit Retriever**: Basic vote-based selection
-2. **Lexical Retriever**: Keyword overlap scoring
-3. **Semantic Retriever**: OpenAI embedding similarity
-4. **TF-IDF Retriever**: Vector-based similarity
-5. **BM25 Retriever**: Advanced ranking algorithm
-6. **MMR Retriever**: Diversity-aware selection
-7. **Ensemble Retriever**: Combined scoring methods
-
-### LangGraph Workflow
-The system uses LangGraph for structured AI workflows:
-
-1. **Goal Analysis**: Extract shopping categories from user input
-2. **Retrieval**: Find relevant products using selected strategy
-3. **Synthesis**: Generate natural language recommendations
-
-## 🚀 Deployment
-
-### Backend Deployment
-```bash
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### Frontend Deployment
-```bash
-cd app
-npm run build
-# Deploy the build/ folder to your hosting service
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **CORS Errors**: Backend includes CORS middleware for localhost:3000
-2. **API Key Issues**: Ensure OPENAI_API_KEY is set correctly
-3. **Port Conflicts**: Backend runs on 8000, frontend on 3000
-4. **Data File**: Ensure mock_data.json exists in project root
-
-### Debug Mode
-
-Enable debug logging:
-```bash
-export LOG_LEVEL=DEBUG
-python main.py
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📝 License
-
-This project is licensed under the MIT License.
-
-## 🙏 Acknowledgments
-
-- OpenAI for GPT-4 API
-- LangChain for AI orchestration
-- FastAPI for the backend framework
-- React team for the frontend framework
+* Integrate exteranl evaluator like RAGAS for benchmarking, synthetic dataset generation and reporting
+* Deploy a prod ready app: [dartpick.com](dartpick.com)
