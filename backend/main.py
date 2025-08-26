@@ -29,6 +29,7 @@ import json
 import os
 from typing import TypedDict, List, Dict, Any, Tuple
 import re
+import math
 
 from langchain_openai import ChatOpenAI
 try:
@@ -950,7 +951,7 @@ def _build_bm25_stats(comments: List[Dict[str, Any]]) -> Dict[str, float]:
     # Compute IDF with a smoothing factor (0.5) to avoid division by zero
     idf: Dict[str, float] = {}
     for w, count in df.items():
-        idf[w] = max(0.0, ( (N - count + 0.5) / (count + 0.5) ))
+        idf[w] = math.log( (N - count + 0.5) / (count + 0.5) + 1.0 )
     return idf
 
 def bm25_reddit_retriever(state: ToolkitState) -> ToolkitState:
