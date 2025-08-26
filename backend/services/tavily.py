@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 
 # services/tavily.py  (or wherever your function lives)
-import os, re, time, requests
+import os, re, time, requests, json
 from urllib.parse import urlparse, quote_plus
 from typing import Dict, Any, List, Optional, Tuple
 from requests.adapters import HTTPAdapter
@@ -12,8 +12,69 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
+def _strip_code_fences(s: str) -> str:
+    return re.sub(r"^```(?:json)?\s*|\s*```$", "", s.strip(), flags=re.MULTILINE)
+
+def _safe_json(text: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        return json.loads(_strip_code_fences(text))
+    except Exception:
+        return fallback
+
+def _vendor_from_url(url: str) -> str:
+    try:
+        host = urlparse(url).netloc.lower().split(':')[0]
+        d = ".".join(host.split(".")[-2:])
+        if d.endswith("amazon.com"): return "amazon"
+        if d.endswith("bestbuy.com"): return "bestbuy"
+        if d.endswith("walmart.com"): return "walmart"
+        if d.endswith("target.com"): return "target"
+        if d.endswith("newegg.com"): return "newegg"
+        if d.endswith("bhphotovideo.com"): return "bhphoto"
+        if d.endswith("microcenter.com"): return "microcenter"
+        return d or "unknown"
+    except Exception:
+        return "unknown"
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+
+def fetch_quick_specs_snippets(product_name: str, category: str, max_results: int = 3) -> List[Dict[str, str]]:
+    """
+    Lightweight: one Tavily call to bring back short content snippets we can feed to the LLM.
+    Safe if Tavily is slow: we return [] on error.
+    """
+    if not TAVILY_API_KEY:
+        return []
+    try:
+        r = requests.post(
+            "https://api.tavily.com/search",
+            headers={"Authorization": f"Bearer {TAVILY_API_KEY}", "content-type": "application/json"},
+            json={
+                "query": f"{product_name} {category} specs dimensions warranty voltage return policy",
+                "search_depth": "basic",
+                "include_answer": False,
+                "include_raw_content": False,
+                "max_results": max_results,
+            },
+            timeout=(1.5, 4.5),
+        )
+        r.raise_for_status()
+        data = r.json()
+        out = []
+        for it in data.get("results", [])[:max_results]:
+            out.append({
+                "title": it.get("title",""),
+                "url": it.get("url",""),
+                "content": it.get("content","")[:1200]  # small, fast
+            })
+        return out
+    except Exception:
+        return []
+
+
+
+
 
 # --- Tunables (env overridable) ---
 CONNECT_TIMEOUT = float(os.getenv("PRICING_CONNECT_TIMEOUT", "1.5"))

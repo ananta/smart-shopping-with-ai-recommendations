@@ -41,7 +41,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from services.tavily import get_product_pricing_and_links
+from services.tavily import get_product_pricing_and_links, _safe_json, fetch_quick_specs_snippets, _vendor_from_url
 from dotenv import load_dotenv
 
 
@@ -61,6 +61,10 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 with open(DATA_FILE, "r", encoding="utf-8") as f:
     reddit_data: List[Dict[str, Any]] = json.load(f)
+
+
+
+
 
 
 # --- Pricing helpers ---
@@ -140,7 +144,172 @@ class ToolkitState(TypedDict):
     category_plan: List[str]
     recommendations: Dict[str, str]
     final_output: str
+    spec: Dict[str, Any]
 
+
+
+
+# ---------- AI: spec_builder ----------
+spec_prompt = ChatPromptTemplate.from_messages([
+    ("system",
+     "You convert a shopping goal into a structured spec.\n"
+     "Return STRICT JSON with keys: budget(number|null), priorities(string[]), "
+     "constraints(object), persona(string).\n"
+     "constraints may include booleans like milk_drinks, beginner, quiet, portability.\n"
+     "If unknown, use null or []. Output ONLY JSON."),
+    ("human", "Goal:\n{goal}")
+])
+
+def ai_spec_builder(state: ToolkitState) -> ToolkitState:
+    goal = state.get("user_goal","")
+    # call LLM
+    chain = spec_prompt | llm
+    resp = chain.invoke({"goal": goal})
+    spec = _safe_json(resp.content, {"budget": None, "priorities": [], "constraints": {}, "persona": ""})
+    # budget fallback (cheap, robust)
+    m = re.search(r"\$?\s*([0-9]{2,5})\b", goal.replace(",", ""))
+    if (spec.get("budget") is None) and m:
+        try: spec["budget"] = float(m.group(1))
+        except: pass
+    # normalize booleans
+    cons = spec.get("constraints") or {}
+    for k in ["milk_drinks","beginner","quiet","portability"]:
+        if k in cons: cons[k] = bool(cons[k])
+    state["spec"] = {"budget": spec.get("budget"), **cons, "priorities": spec.get("priorities", []), "persona": spec.get("persona","")}
+    return state
+
+
+
+
+
+# ---------- AI: attribute_extractor ----------
+attr_prompt = ChatPromptTemplate.from_messages([
+    ("system",
+     "Extract product attributes from the provided snippets.\n"
+     "Return STRICT JSON with keys:\n"
+     "{{\n"
+     "  \"attributes\": {{ \"voltage\": \"string|null\", \"dimensions\": \"string|null\", \"weight\": \"string|null\",\n"
+     "                   \"portafilter_mm\": \"number|null\", \"warranty_months\": \"number|null\",\n"
+     "                   \"skill_level\": \"string|null\", \"good_for_milk\": \"boolean|null\", \"noise_level\": \"string|null\",\n"
+     "                   \"required_addons\": [] }},\n"
+     "  \"citations\": []\n"
+     "}}\n"
+     "If an attribute is not mentioned, use null or []. Do NOT guess specifics; only infer when strongly implied."
+    ),
+    ("human",
+     "Product: {product}\nCategory: {category}\n\n"
+     "Reddit evidence:\n{reddit}\n\n"
+     "Web snippets:\n{snippets}"
+    ),
+])
+
+
+def _build_reddit_evidence(comments: List[Dict[str, Any]], limit:int=2) -> str:
+    lines=[]
+    for c in comments[:limit]:
+        lines.append(f"- ({c.get('votes',0)} upvotes) {c.get('comment','')[:400]}")
+    return "\n".join(lines) if lines else "None"
+
+def ai_attribute_extractor(state: ToolkitState) -> ToolkitState:
+    recs = state.get("recommendations", {})
+    enriched = {}
+    for cat, info in recs.items():
+        # handle advanced shape
+        if isinstance(info, dict) and "top_comments" in info:
+            out_list=[]
+            for c in info["top_comments"]:
+                product = c.get("product") or ""
+                # fetch minimal external snippets (fast, optional)
+                snippets = fetch_quick_specs_snippets(product, cat, max_results=2)
+                reddit_txt = _build_reddit_evidence([c], limit=1)  # you can pass more if you want
+                chain = attr_prompt | llm
+                resp = chain.invoke({
+                    "product": product,
+                    "category": cat,
+                    "reddit": reddit_txt,
+                    "snippets": json.dumps(snippets)[:1800]
+                })
+                extracted = _safe_json(resp.content, {"attributes": {}, "citations": []})
+                out_list.append({**c, "attributes": extracted.get("attributes", {}), "citations": extracted.get("citations", [])})
+            enriched[cat] = {"top_comments": out_list}
+        # handle simple shape
+        elif isinstance(info, dict) and info.get("product"):
+            product = info.get("product") or ""
+            snippets = fetch_quick_specs_snippets(product, cat, max_results=2)
+            reddit_txt = _build_reddit_evidence([info], limit=1)
+            chain = attr_prompt | llm
+            resp = chain.invoke({
+                "product": product, "category": cat,
+                "reddit": reddit_txt, "snippets": json.dumps(snippets)[:1800]
+            })
+            extracted = _safe_json(resp.content, {"attributes": {}, "citations": []})
+            enriched[cat] = {**info, "attributes": extracted.get("attributes", {}), "citations": extracted.get("citations", [])}
+        else:
+            enriched[cat] = info
+    return {**state, "recommendations": enriched}
+
+
+
+# ---------- AI: decision_maker ----------
+decision_prompt = ChatPromptTemplate.from_messages([
+    ("system",
+     "You are a shopping agent. Decide 'buy', 'wait', or 'consider alt' for each product.\n"
+     "Consider: budget, price, attributes (fit for milk drinks, skill level, voltage/region),\n"
+     "and retailer trust (avoid sketchy third-party sellers when evident in URLs).\n"
+     "Return STRICT JSON:\n"
+     "{{ \"decision\": \"buy|wait|consider alt\", \"why\": \"string\", \"highlights\": [] }}\n"
+     "Be concise and evidence-based."
+    ),
+    ("human",
+     "User spec:\n{spec}\n\n"
+     "Product: {product}\nCategory: {category}\n"
+     "Attributes: {attributes}\n"
+     "Price blob (raw): {pricing}\n"
+     "Retailers (urls if any): {retails}\n"
+    ),
+])
+
+
+
+def ai_decision_maker(state: ToolkitState) -> ToolkitState:
+    spec = state.get("spec", {})
+    recs = state.get("recommendations", {})
+    decided = {}
+    for cat, info in recs.items():
+        def decide_one(item: Dict[str, Any]) -> Dict[str, Any]:
+            product = item.get("product","")
+            attrs = item.get("attributes", {})
+            pricing = item.get("pricing", {})  # raw (your current shape)
+            # gather retailer signals from links (if present)
+            urls = []
+            if isinstance(pricing, dict):
+                if pricing.get("purchase_link"): urls.append(pricing["purchase_link"])
+                for s in pricing.get("available_stores", []):
+                    if isinstance(s, dict) and s.get("url"): urls.append(s["url"])
+                    elif isinstance(s, str): urls.append(s)
+            vendors = [{"url": u, "vendor": _vendor_from_url(u)} for u in urls[:5]]
+            chain = decision_prompt | llm
+            resp = chain.invoke({
+                "spec": json.dumps(spec),
+                "product": product,
+                "category": cat,
+                "attributes": json.dumps(attrs),
+                "pricing": json.dumps(pricing),
+                "retails": json.dumps(vendors),
+            })
+            out = _safe_json(resp.content, {"decision": "consider alt", "why": "Not enough information.", "highlights": []})
+            return {**item, "agent_decision": out}
+
+        if isinstance(info, dict) and "top_comments" in info:
+            lst=[]
+            for c in info["top_comments"]:
+                lst.append(decide_one(c))
+            decided[cat] = {"top_comments": lst}
+        elif isinstance(info, dict) and info.get("product"):
+            decided[cat] = decide_one(info)
+        else:
+            decided[cat] = info
+    return {**state, "recommendations": decided}
 
 
 
@@ -270,6 +439,24 @@ analyze_prompt = ChatPromptTemplate.from_messages([
     ),
     ("human", "{user_goal}")
 ])
+
+
+def spec_builder(state: ToolkitState) -> ToolkitState:
+    goal = state.get("user_goal", "")
+    spec: Dict[str, Any] = {}
+    # budget like "$500" or "under 700"
+    m = re.search(r"\$?\s*([0-9]{2,5})\s*(?:bucks|dollars)?", goal.lower())
+    if m:
+        try: spec["budget"] = float(m.group(1))
+        except: pass
+    # simple intents
+    text = goal.lower()
+    spec["milk_drinks"] = any(w in text for w in ["latte", "cappuccino", "milk", "microfoam"])
+    spec["beginner"] = any(w in text for w in ["beginner", "first", "starter", "easy"])
+    spec["quiet"] = "quiet" in text or "low noise" in text
+    state["spec"] = spec
+    return state
+
 
 def analyze_goal(state: ToolkitState) -> ToolkitState:
     """Analyse the user goal and derive a list of categories.
@@ -1071,7 +1258,16 @@ def synthesizer(state: ToolkitState) -> ToolkitState:
                 alt_cnt = max(0, len(c.get("offers", [])) - 1)
                 price_str = f" @ ${best['price']:.2f} from {best['vendor']}" if (best and best.get("price")) else ""
                 alt_str = f" (+{alt_cnt} more stores)" if alt_cnt else ""
-                items.append(f"{c['product']} (votes: {c['votes']}) – {c['comment']} {price_str}{alt_str}")
+
+                dec = c.get("agent_decision") or {}
+                decision_str = ""
+                if isinstance(dec, dict) and dec.get("decision"):
+                    why = dec.get("why")
+                    decision_str = f" | Decision: {dec.get('decision')}{(' – ' + why) if why else ''}"
+
+                items.append(
+                    f"{c['product']} (votes: {c['votes']}) – {c['comment']}{price_str}{alt_str}{decision_str}"
+                )
             lines.append(f"{cat}: " + "; ".join(items) if items else f"{cat}: {info.get('message','No recommendations found.')}")
         elif isinstance(info, dict) and info.get("product"):
             best = info.get("best_offer")
@@ -1147,11 +1343,20 @@ builder.add_node("synthesizer", synthesizer)
 
 builder.add_node("pricing_enricher", pricing_enricher)
 
+
+builder.add_node("ai_spec_builder", ai_spec_builder)
+builder.add_node("ai_attribute_extractor", ai_attribute_extractor)
+builder.add_node("ai_decision_maker", ai_decision_maker)
+
 # Define the order of execution: analysis → retrieval → synthesis
 builder.set_entry_point("goal_analyzer")
-builder.add_edge("goal_analyzer", "retriever")
-builder.add_edge("retriever", "pricing_enricher")
-builder.add_edge("pricing_enricher", "synthesizer")
+builder.add_edge("goal_analyzer", "ai_spec_builder")
+builder.add_edge("ai_spec_builder", "retriever")
+builder.add_edge("retriever", "ai_attribute_extractor")
+builder.add_edge("ai_attribute_extractor", "ai_decision_maker")
+""" builder.add_edge("retriever", "pricing_enricher") """
+""" builder.add_edge("pricing_enricher", "synthesizer") """
+builder.add_edge("ai_decision_maker", "synthesizer")
 builder.set_finish_point("synthesizer")
 
 graph = builder.compile()
@@ -1201,6 +1406,7 @@ def recommend(req: GoalRequest):
         "category_plan": [],
         "recommendations": {},
         "final_output": "",
+        "spec": {}
     }
     result_state = graph.invoke(initial_state)
     return {
@@ -1218,6 +1424,7 @@ def run_demo(user_goal: str) -> str:
         "category_plan": [],
         "recommendations": {},
         "final_output": "",
+        "spec": {}
     }
     result_state = graph.invoke(initial_state)
     return result_state["final_output"]
