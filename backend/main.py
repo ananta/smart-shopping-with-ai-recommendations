@@ -143,7 +143,7 @@ class ToolkitState(TypedDict):
 
     user_goal: str
     category_plan: List[str]
-    recommendations: Dict[str, str]
+    recommendations: Dict[str, Any]
     final_output: str
     spec: Dict[str, Any]
 
