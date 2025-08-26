@@ -1428,10 +1428,9 @@ builder.add_node("ai_decision_maker", ai_decision_maker)
 builder.set_entry_point("goal_analyzer")
 builder.add_edge("goal_analyzer", "ai_spec_builder")
 builder.add_edge("ai_spec_builder", "retriever")
-builder.add_edge("retriever", "ai_attribute_extractor")
+builder.add_edge("retriever", "pricing_enricher")
+builder.add_edge("pricing_enricher", "ai_attribute_extractor")
 builder.add_edge("ai_attribute_extractor", "ai_decision_maker")
-""" builder.add_edge("retriever", "pricing_enricher") """
-""" builder.add_edge("pricing_enricher", "synthesizer") """
 builder.add_edge("ai_decision_maker", "synthesizer")
 builder.set_finish_point("synthesizer")
 
