@@ -27,7 +27,7 @@ It will print a sample recommendation summary for an example user goal.
 
 import json
 import os
-from typing import TypedDict, List, Dict, Any
+from typing import TypedDict, List, Dict, Any, Tuple
 import re
 
 from langchain_openai import ChatOpenAI
