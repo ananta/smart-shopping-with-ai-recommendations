@@ -180,21 +180,24 @@ def ai_spec_builder(state: ToolkitState) -> ToolkitState:
 
 
 
-
-
 # ---------- AI: attribute_extractor ----------
 attr_prompt = ChatPromptTemplate.from_messages([
     ("system",
-     "Extract product attributes from the provided snippets.\n"
-     "Return STRICT JSON with keys:\n"
+     "You extract the most decision-relevant attributes for ANY product category "
+     "(e.g., electronics, kitchen, luggage, apparel, photography, home, tools). "
+     "Focus on facts users need to compare/buy.\n\n"
+     "Guidance (non-exhaustive): performance, size/weight/dimensions, capacity, "
+     "compatibility & standards (ports, mounts, voltage, OS/support), power/battery, "
+     "materials/durability, warranty/support, included accessories.\n\n"
+     "Return STRICT JSON ONLY:\n"
      "{{\n"
-     "  \"attributes\": {{ \"voltage\": \"string|null\", \"dimensions\": \"string|null\", \"weight\": \"string|null\",\n"
-     "                   \"portafilter_mm\": \"number|null\", \"warranty_months\": \"number|null\",\n"
-     "                   \"skill_level\": \"string|null\", \"good_for_milk\": \"boolean|null\", \"noise_level\": \"string|null\",\n"
-     "                   \"required_addons\": [] }},\n"
-     "  \"citations\": []\n"
+     "  \"attributes\": [\n"
+     "    {{\"name\":\"string\",\"value\":(string|number|boolean|null),\"unit\":\"string|null\",\"confidence\":0.0-1.0}}\n"
+     "  ],\n"
+     "  \"citations\": [\"string\"]\n"
      "}}\n"
-     "If an attribute is not mentioned, use null or []. Do NOT guess specifics; only infer when strongly implied."
+     "Rules: 6–10 items max. If unknown, use null. Do not invent. Prefer concise, normalized values "
+     "(e.g., \"1.2 kg\", unit:\"kg\"; \"65 Wh\", unit:\"Wh\"; \"USB-C PD\", unit:null)."
     ),
     ("human",
      "Product: {product}\nCategory: {category}\n\n"
@@ -203,112 +206,184 @@ attr_prompt = ChatPromptTemplate.from_messages([
     ),
 ])
 
-
 def _build_reddit_evidence(comments: List[Dict[str, Any]], limit:int=2) -> str:
     lines=[]
     for c in comments[:limit]:
         lines.append(f"- ({c.get('votes',0)} upvotes) {c.get('comment','')[:400]}")
     return "\n".join(lines) if lines else "None"
 
+def _slug_attr(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+","_", name.lower()).strip("_")
+
+
 def ai_attribute_extractor(state: ToolkitState) -> ToolkitState:
     recs = state.get("recommendations", {})
-    enriched = {}
+    enriched: Dict[str, Any] = {}
+
+    def extract_for_item(product: str, category: str, reddit_block: str) -> Dict[str, Any]:
+        snippets = fetch_quick_specs_snippets(product, category, max_results=2)
+        chain = attr_prompt | llm
+        resp = chain.invoke({
+            "product": product,
+            "category": category,
+            "reddit": reddit_block,
+            "snippets": json.dumps(snippets)[:1800],
+        })
+        parsed = _safe_json(resp.content, {"attributes": [], "citations": []})
+        attrs: List[Dict[str, Any]] = parsed.get("attributes") or []
+        # Build a convenience map for UI/synth: {"weight": {"value": "...","unit":"..."}}
+        attrs_map: Dict[str, Any] = {}
+        for a in attrs:
+            n = _slug_attr(str(a.get("name","")).strip() or "attr")
+            if n and n not in attrs_map:
+                attrs_map[n] = {k: a.get(k) for k in ("value","unit","confidence")}
+        return {"attributes": attrs, "attributes_map": attrs_map, "citations": parsed.get("citations", [])}
+
     for cat, info in recs.items():
-        # handle advanced shape
         if isinstance(info, dict) and "top_comments" in info:
-            out_list=[]
-            for c in info["top_comments"]:
+            out_list = []
+            for c in info.get("top_comments", []):
                 product = c.get("product") or ""
-                # fetch minimal external snippets (fast, optional)
-                snippets = fetch_quick_specs_snippets(product, cat, max_results=2)
-                reddit_txt = _build_reddit_evidence([c], limit=1)  # you can pass more if you want
-                chain = attr_prompt | llm
-                resp = chain.invoke({
-                    "product": product,
-                    "category": cat,
-                    "reddit": reddit_txt,
-                    "snippets": json.dumps(snippets)[:1800]
-                })
-                extracted = _safe_json(resp.content, {"attributes": {}, "citations": []})
-                out_list.append({**c, "attributes": extracted.get("attributes", {}), "citations": extracted.get("citations", [])})
+                reddit_txt = _build_reddit_evidence([c], limit=1)
+                extracted = extract_for_item(product, cat, reddit_txt)
+                out_list.append({**c, **extracted})
             enriched[cat] = {"top_comments": out_list}
-        # handle simple shape
         elif isinstance(info, dict) and info.get("product"):
             product = info.get("product") or ""
-            snippets = fetch_quick_specs_snippets(product, cat, max_results=2)
             reddit_txt = _build_reddit_evidence([info], limit=1)
-            chain = attr_prompt | llm
-            resp = chain.invoke({
-                "product": product, "category": cat,
-                "reddit": reddit_txt, "snippets": json.dumps(snippets)[:1800]
-            })
-            extracted = _safe_json(resp.content, {"attributes": {}, "citations": []})
-            enriched[cat] = {**info, "attributes": extracted.get("attributes", {}), "citations": extracted.get("citations", [])}
+            extracted = extract_for_item(product, cat, reddit_txt)
+            enriched[cat] = {**info, **extracted}
         else:
             enriched[cat] = info
-    return {**state, "recommendations": enriched}
 
+    return {**state, "recommendations": enriched}
 
 
 # ---------- AI: decision_maker ----------
 decision_prompt = ChatPromptTemplate.from_messages([
     ("system",
-     "You are a shopping agent. Decide 'buy', 'wait', or 'consider alt' for each product.\n"
-     "Consider: budget, price, attributes (fit for milk drinks, skill level, voltage/region),\n"
-     "and retailer trust (avoid sketchy third-party sellers when evident in URLs).\n"
-     "Return STRICT JSON:\n"
-     "{{ \"decision\": \"buy|wait|consider alt\", \"why\": \"string\", \"highlights\": [] }}\n"
-     "Be concise and evidence-based."
+     "You are a shopping agent. Decide whether to 'buy', 'wait', or 'consider alt' for ANY product type.\n"
+     "Use evidence: user spec (budget/priorities/constraints), attributes (extracted facts), price context, offers, and retailers.\n"
+     "Heuristics: prefer trusted retailers when obvious from URLs; avoid too-good-to-be-true prices; respect user's budget/needs.\n"
+     "Return STRICT JSON ONLY:\n"
+     "{{\n"
+     "  \"decision\": \"buy|wait|consider alt\",\n"
+     "  \"why\": \"string (<=160 chars)\",\n"
+     "  \"factors\": [\"string\"],\n"
+     "  \"confidence\": 0.0\n"
+     "}}\n"
+     "Be concise and evidence-based. If signals conflict or are missing, lower confidence and explain briefly."
     ),
     ("human",
      "User spec:\n{spec}\n\n"
-     "Product: {product}\nCategory: {category}\n"
-     "Attributes: {attributes}\n"
-     "Price blob (raw): {pricing}\n"
-     "Retailers (urls if any): {retails}\n"
+     "Product: {product}\nCategory: {category}\n\n"
+     "Attributes (list):\n{attributes}\n\n"
+     "Attributes (map):\n{attributes_map}\n\n"
+     "Price context:\n{price}\n\n"
+     "Offers (subset):\n{offers}\n\n"
+     "Retailers:\n{retailers}\n"
     ),
 ])
 
-
+def _num_from_price_str(s: str | None) -> float | None:
+    if not s: return None
+    # keep digits and dot, drop currency symbols/words
+    m = re.search(r"[\d][\d,\.]*", s)
+    if not m: return None
+    try:
+        return float(m.group(0).replace(",", ""))
+    except Exception:
+        return None
 
 def ai_decision_maker(state: ToolkitState) -> ToolkitState:
-    spec = state.get("spec", {})
-    recs = state.get("recommendations", {})
-    decided = {}
-    for cat, info in recs.items():
-        def decide_one(item: Dict[str, Any]) -> Dict[str, Any]:
-            product = item.get("product","")
-            attrs = item.get("attributes", {})
-            pricing = item.get("pricing", {})  # raw (your current shape)
-            # gather retailer signals from links (if present)
-            urls = []
-            if isinstance(pricing, dict):
-                if pricing.get("purchase_link"): urls.append(pricing["purchase_link"])
-                for s in pricing.get("available_stores", []):
-                    if isinstance(s, dict) and s.get("url"): urls.append(s["url"])
-                    elif isinstance(s, str): urls.append(s)
-            vendors = [{"url": u, "vendor": _vendor_from_url(u)} for u in urls[:5]]
-            chain = decision_prompt | llm
-            resp = chain.invoke({
-                "spec": json.dumps(spec),
-                "product": product,
-                "category": cat,
-                "attributes": json.dumps(attrs),
-                "pricing": json.dumps(pricing),
-                "retails": json.dumps(vendors),
-            })
-            out = _safe_json(resp.content, {"decision": "consider alt", "why": "Not enough information.", "highlights": []})
-            return {**item, "agent_decision": out}
+    spec = state.get("spec", {}) or {}
+    recs = state.get("recommendations", {}) or {}
+    decided: Dict[str, Any] = {}
 
+    def decide_one(item: Dict[str, Any], category: str) -> Dict[str, Any]:
+        product = item.get("product") or ""
+
+        # ---- attributes: handle list or dict; build both forms for the prompt ----
+        attrs_list = item.get("attributes") or []
+        attrs_map = item.get("attributes_map") or {}
+        if isinstance(attrs_list, dict):
+            # if legacy dict, mirror to list
+            attrs_map = attrs_list
+            attrs_list = [{"name": k, "value": v} for k, v in attrs_list.items()]
+
+        # ---- pricing context: accept best_offer/offers or raw pricing blob ----
+        pricing_blob = item.get("pricing") or {}
+        offers = item.get("offers") or []
+        best = item.get("best_offer") or {}
+
+        # try to compute a numeric best price if possible
+        best_price = None
+        currency = None
+        if isinstance(best, dict):
+            p = best.get("effective_price", best.get("price"))
+            if isinstance(p, (int, float)):
+                best_price = float(p)
+            elif isinstance(p, str):
+                best_price = _num_from_price_str(p)
+            currency = best.get("currency") or None
+
+        if best_price is None:
+            # fallback: parse raw pricing string
+            if isinstance(pricing_blob, dict) and pricing_blob.get("price"):
+                best_price = _num_from_price_str(pricing_blob.get("price"))
+
+        # offers summary for the prompt (limit to a few)
+        offers_summary: List[Dict[str, Any]] = []
+        for o in (offers[:4] if isinstance(offers, list) else []):
+            offers_summary.append({
+                "vendor": o.get("vendor"),
+                "price": o.get("effective_price", o.get("price")),
+                "coupon": o.get("coupon_applied"),
+                "risk": o.get("risk_score"),
+                "url": o.get("url"),
+            })
+
+        # retailer URLs from pricing blob as extra signal
+        retailers: List[Dict[str, Any]] = []
+        if isinstance(pricing_blob, dict):
+            if pricing_blob.get("purchase_link"):
+                retailers.append({"url": pricing_blob["purchase_link"]})
+            for s in pricing_blob.get("available_stores", [])[:5]:
+                if isinstance(s, dict) and s.get("url"):
+                    retailers.append({"url": s["url"]})
+                elif isinstance(s, str):
+                    retailers.append({"url": s})
+
+        # compact price context
+        price_ctx = {"best_price": best_price, "currency": currency}
+
+        chain = decision_prompt | llm
+        resp = chain.invoke({
+            "spec": json.dumps(spec),
+            "product": product,
+            "category": category,
+            "attributes": json.dumps(attrs_list),
+            "attributes_map": json.dumps(attrs_map),
+            "price": json.dumps(price_ctx),
+            "offers": json.dumps(offers_summary),
+            "retailers": json.dumps(retailers),
+        })
+        out = _safe_json(resp.content, {
+            "decision": "consider alt",
+            "why": "Not enough information.",
+            "factors": [],
+            "confidence": 0.3
+        })
+        return {**item, "agent_decision": out}
+
+    for cat, info in recs.items():
         if isinstance(info, dict) and "top_comments" in info:
-            lst=[]
-            for c in info["top_comments"]:
-                lst.append(decide_one(c))
-            decided[cat] = {"top_comments": lst}
+            decided[cat] = {"top_comments": [decide_one(c, cat) for c in info.get("top_comments", [])]}
         elif isinstance(info, dict) and info.get("product"):
-            decided[cat] = decide_one(info)
+            decided[cat] = decide_one(info, cat)
         else:
             decided[cat] = info
+
     return {**state, "recommendations": decided}
 
 
