@@ -296,86 +296,153 @@ def _num_from_price_str(s: str | None) -> float | None:
     except Exception:
         return None
 
+def _best_price_from_item(item: Dict[str, Any]) -> tuple[float | None, str | None, Dict[str, Any] | None]:
+    """
+    Returns (best_price_number, currency, best_offer_dict) for a rec item.
+    Priority:
+      1) item.best_offer.{effective_price|price}
+      2) min(offers[].price)
+      3) parse pricing.price string
+    """
+    # 1) best_offer
+    best = item.get("best_offer") or {}
+    # accept int/float directly; parse strings via _parse_price_string
+    price_val = None
+    currency = None
+    if isinstance(best, dict):
+        raw = best.get("effective_price", best.get("price"))
+        if isinstance(raw, (int, float)):
+            price_val = float(raw); currency = best.get("currency") or "USD"
+        elif isinstance(raw, str):
+            price_val, currency = _parse_price_string(raw)
+        else:
+            currency = best.get("currency") or None
+
+    # 2) scan offers if still missing
+    if price_val is None:
+        offers = item.get("offers") or []
+        priced = [(o.get("price"), o.get("currency") or "USD", o)
+                  for o in offers if isinstance(o.get("price"), (int, float))]
+        if priced:
+            price_val, currency, best = min(priced, key=lambda x: x[0])
+
+    # 3) fallback to the raw pricing blob string
+    if price_val is None:
+        pricing_blob = item.get("pricing") or {}
+        if isinstance(pricing_blob, dict) and pricing_blob.get("price"):
+            price_val, currency = _parse_price_string(pricing_blob.get("price"))
+
+    return price_val, (currency or "USD"), (best or None)
+
+
+def _quick_guards(spec: Dict[str, Any], attrs_map: Dict[str, Any], best_price: float | None):
+    guards = []
+    if best_price is not None and spec.get("budget") is not None and best_price > float(spec["budget"]):
+        guards.append(f"over_budget_by={best_price - float(spec['budget']):.2f}")
+    volt = str((attrs_map.get("voltage") or {}).get("value") or "").lower()
+    if volt and any(v in volt for v in ["220", "230"]) and "us" in (spec.get("persona","").lower()):
+        guards.append("voltage_mismatch")
+    return guards
+
+
 def ai_decision_maker(state: ToolkitState) -> ToolkitState:
     spec = state.get("spec", {}) or {}
     recs = state.get("recommendations", {}) or {}
     decided: Dict[str, Any] = {}
 
+
     def decide_one(item: Dict[str, Any], category: str) -> Dict[str, Any]:
-        product = item.get("product") or ""
+            product = item.get("product") or ""
 
-        # ---- attributes: handle list or dict; build both forms for the prompt ----
-        attrs_list = item.get("attributes") or []
-        attrs_map = item.get("attributes_map") or {}
-        if isinstance(attrs_list, dict):
-            # if legacy dict, mirror to list
-            attrs_map = attrs_list
-            attrs_list = [{"name": k, "value": v} for k, v in attrs_list.items()]
 
-        # ---- pricing context: accept best_offer/offers or raw pricing blob ----
-        pricing_blob = item.get("pricing") or {}
-        offers = item.get("offers") or []
-        best = item.get("best_offer") or {}
+            # ---- attributes: handle list or dict; build both forms for the prompt ----
+            attrs_list = item.get("attributes") or []
+            attrs_map = item.get("attributes_map") or {}
+            if isinstance(attrs_list, dict):
+                # legacy dict -> mirror to list
+                attrs_map = attrs_list
+                attrs_list = [{"name": k, "value": v} for k, v in attrs_list.items()]
 
-        # try to compute a numeric best price if possible
-        best_price = None
-        currency = None
-        if isinstance(best, dict):
-            p = best.get("effective_price", best.get("price"))
-            if isinstance(p, (int, float)):
-                best_price = float(p)
-            elif isinstance(p, str):
-                best_price = _num_from_price_str(p)
-            currency = best.get("currency") or None
+            # ---- pricing context: accept best_offer/offers or raw pricing blob ----
+            pricing_blob = item.get("pricing") or {}
+            offers = item.get("offers") or []
+            best = item.get("best_offer") or {}
 
-        if best_price is None:
-            # fallback: parse raw pricing string
-            if isinstance(pricing_blob, dict) and pricing_blob.get("price"):
+            # Compute a numeric best price first
+            best_price = None
+            currency = None
+            if isinstance(best, dict):
+                p = best.get("effective_price", best.get("price"))
+                if isinstance(p, (int, float)):
+                    best_price = float(p)
+                    currency = best.get("currency") or "USD"
+                elif isinstance(p, str):
+                    # parse string like "$399.99"
+                    val = _num_from_price_str(p)
+                    if val is not None:
+                        best_price = val
+                        currency = best.get("currency") or "USD"
+
+            # If still missing, take the lowest numeric price from offers[]
+            if best_price is None and isinstance(offers, list):
+                priced = [(o.get("price"), o.get("currency") or "USD") 
+                          for o in offers if isinstance(o.get("price"), (int, float))]
+                if priced:
+                    priced.sort(key=lambda t: t[0])
+                    best_price, currency = priced[0]
+
+            # Final fallback: parse raw pricing string
+            if best_price is None and isinstance(pricing_blob, dict) and pricing_blob.get("price"):
                 best_price = _num_from_price_str(pricing_blob.get("price"))
+                currency = currency or "USD"
 
-        # offers summary for the prompt (limit to a few)
-        offers_summary: List[Dict[str, Any]] = []
-        for o in (offers[:4] if isinstance(offers, list) else []):
-            offers_summary.append({
-                "vendor": o.get("vendor"),
-                "price": o.get("effective_price", o.get("price")),
-                "coupon": o.get("coupon_applied"),
-                "risk": o.get("risk_score"),
-                "url": o.get("url"),
+            # ✅ Now compute guard flags (needs best_price)
+            guard_flags = _quick_guards(spec, attrs_map, best_price)
+
+            # offers summary for the prompt (limit to a few)
+            offers_summary: List[Dict[str, Any]] = []
+            for o in (offers[:4] if isinstance(offers, list) else []):
+                offers_summary.append({
+                    "vendor": o.get("vendor"),
+                    "price": o.get("effective_price", o.get("price")),
+                    "coupon": o.get("coupon_applied"),
+                    "risk": o.get("risk_score"),
+                    "url": o.get("url"),
+                })
+
+            # retailer URLs from pricing blob as extra signal
+            retailers: List[Dict[str, Any]] = []
+            if isinstance(pricing_blob, dict):
+                if pricing_blob.get("purchase_link"):
+                    retailers.append({"url": pricing_blob["purchase_link"]})
+                for s in pricing_blob.get("available_stores", [])[:5]:
+                    if isinstance(s, dict) and s.get("url"):
+                        retailers.append({"url": s["url"]})
+                    elif isinstance(s, str):
+                        retailers.append({"url": s})
+
+            # compact price context (include guards so the LLM sees them)
+            price_ctx = {"best_price": best_price, "currency": currency, "guards": guard_flags}
+
+            chain = decision_prompt | llm
+            resp = chain.invoke({
+                "spec": json.dumps(spec),
+                "product": product,
+                "category": category,
+                "attributes": json.dumps(attrs_list),
+                "attributes_map": json.dumps(attrs_map),
+                "price": json.dumps(price_ctx),
+                "offers": json.dumps(offers_summary),
+                "retailers": json.dumps(retailers),
+            })
+            out = _safe_json(resp.content, {
+                "decision": "consider alt",
+                "why": "Not enough information.",
+                "factors": [],
+                "confidence": 0.3
             })
 
-        # retailer URLs from pricing blob as extra signal
-        retailers: List[Dict[str, Any]] = []
-        if isinstance(pricing_blob, dict):
-            if pricing_blob.get("purchase_link"):
-                retailers.append({"url": pricing_blob["purchase_link"]})
-            for s in pricing_blob.get("available_stores", [])[:5]:
-                if isinstance(s, dict) and s.get("url"):
-                    retailers.append({"url": s["url"]})
-                elif isinstance(s, str):
-                    retailers.append({"url": s})
-
-        # compact price context
-        price_ctx = {"best_price": best_price, "currency": currency}
-
-        chain = decision_prompt | llm
-        resp = chain.invoke({
-            "spec": json.dumps(spec),
-            "product": product,
-            "category": category,
-            "attributes": json.dumps(attrs_list),
-            "attributes_map": json.dumps(attrs_map),
-            "price": json.dumps(price_ctx),
-            "offers": json.dumps(offers_summary),
-            "retailers": json.dumps(retailers),
-        })
-        out = _safe_json(resp.content, {
-            "decision": "consider alt",
-            "why": "Not enough information.",
-            "factors": [],
-            "confidence": 0.3
-        })
-        return {**item, "agent_decision": out}
+            return {**item, "agent_decision": out, "guards": guard_flags, "best_price": best_price, "currency": currency}
 
     for cat, info in recs.items():
         if isinstance(info, dict) and "top_comments" in info:
