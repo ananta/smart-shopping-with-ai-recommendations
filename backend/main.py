@@ -30,6 +30,7 @@ import os
 from typing import TypedDict, List, Dict, Any, Tuple
 import re
 import math
+import time
 
 from langchain_openai import ChatOpenAI
 try:
@@ -43,6 +44,7 @@ from langgraph.graph import StateGraph
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from services.tavily import get_product_pricing_and_links, _safe_json, fetch_quick_specs_snippets, _vendor_from_url
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
 
@@ -1523,7 +1525,7 @@ app = FastAPI()
 # Add CORS middleware to allow requests from React app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000","http://localhost:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1558,6 +1560,95 @@ def recommend(req: GoalRequest):
         "summary": result_state.get("final_output", ""),
     }
 
+def _public_slice(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Trim the big state to just what the UI needs at each step (now includes pricing/offers)."""
+    recs = state.get("recommendations", {})
+
+    def _offer_lite(o: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "vendor": o.get("vendor"),
+            "price": o.get("price"),          # numeric if known, else None
+            "currency": o.get("currency") or "USD",
+            "url": o.get("url"),
+            "affiliate_url": o.get("affiliate_url"),
+            "coupon": o.get("coupon"),        # may be None
+            "risk": o.get("risk"),            # may be None (alias for risk_score)
+        }
+
+    def _best_lite(o: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        if not isinstance(o, dict):
+            return None
+        return _offer_lite(o)
+
+    def _item_lite(c: Dict[str, Any]) -> Dict[str, Any]:
+        # Keep minimal but useful comparison fields
+        return {
+            "product": c.get("product"),
+            "votes": c.get("votes"),
+            "best_price": c.get("best_price"),          # computed in ai_decision_maker
+            "currency": c.get("currency") or "USD",
+            "agent_decision": (c.get("agent_decision") or {}).get("decision"),
+            "best_offer": _best_lite(c.get("best_offer")),
+            "offers": [_offer_lite(o) for o in (c.get("offers") or [])],
+        }
+
+    def _lite(rec):
+        if isinstance(rec, dict) and "top_comments" in rec:
+            return {"top_comments": [_item_lite(c) for c in rec.get("top_comments", [])]}
+        elif isinstance(rec, dict) and rec.get("product"):
+            # single-item shape (naïve retriever)
+            return _item_lite(rec)
+        return rec
+
+    return {
+        "category_plan": state.get("category_plan", []),
+        "spec": state.get("spec", {}),
+        "recommendations": {k: _lite(v) for k, v in recs.items()},
+        "final_output": state.get("final_output", None),
+    }
+
+
+def _sse(event: str, data: Dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.get("/recommend/stream")
+def recommend_stream(user_goal: str):
+    """
+    Server-Sent Events stream of the graph execution.
+    One event per node completion + a final 'done'.
+    """
+    initial_state: ToolkitState = {
+        "user_goal": user_goal,
+        "category_plan": [],
+        "recommendations": {},
+        "final_output": "",
+        "spec": {}
+    }
+
+    def gen():
+        # Let the client know we started
+        yield _sse("start", {"user_goal": user_goal, "ts": time.time()})
+
+        # Stream LangGraph node updates
+        for update in graph.stream(initial_state):
+            # update is a dict like {"node_name": <partial/new state>}
+            for node_name, node_state in update.items():
+                yield _sse(
+                    "node_end",
+                    {
+                        "node": node_name,
+                        "state": _public_slice(node_state),
+                        "ts": time.time(),
+                    },
+                )
+
+        # Finished
+        # You can send the final state again if you want a definitive payload
+        final_state = graph.invoke(initial_state)  # optional: if you want the full final
+        yield _sse("done", {"state": _public_slice(final_state), "ts": time.time()})
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 def run_demo(user_goal: str) -> str:
     """Invoke the graph for a given user goal and return the final summary."""

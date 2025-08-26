@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import './App.css';
-import ProductPrompt from './components/ProductPrompt';
-import Recommendations from './components/Recommendations';
-import Cart from './components/Cart';
+import React, { useState } from "react";
+import "./App.css";
+import ProductPrompt from "./components/ProductPrompt";
+import Recommendations from "./components/Recommendations";
+import Cart from "./components/Cart";
+import RecommendStreamDemo from "./RecommendStreamDemo";
 
 export interface Product {
   id: string;
@@ -26,7 +27,10 @@ export interface RecommendationResponse {
 }
 
 function App() {
-  const [recommendations, setRecommendations] = useState<RecommendationResponse | null>(null);
+  const [
+    recommendations,
+    setRecommendations
+  ] = useState<RecommendationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cart, setCart] = useState<Product[]>([]);
@@ -34,14 +38,14 @@ function App() {
   const handleGetRecommendations = async (userGoal: string) => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const response = await fetch('http://localhost:8000/recommend', {
-        method: 'POST',
+      const response = await fetch("http://localhost:8000/recommend", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ user_goal: userGoal }),
+        body: JSON.stringify({ user_goal: userGoal })
       });
 
       if (!response.ok) {
@@ -51,7 +55,7 @@ function App() {
       const data: RecommendationResponse = await response.json();
       setRecommendations(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -77,33 +81,35 @@ function App() {
         <h1>Smart Shopping AI</h1>
         <p>Get personalized product recommendations powered by AI</p>
       </header>
-      
+
       <main className="App-main">
-        <div className="container">
-          <ProductPrompt 
-            onGetRecommendations={handleGetRecommendations}
-            loading={loading}
-          />
-          
-          {error && (
-            <div className="error-message">
-              <p>Error: {error}</p>
-              <p>Make sure your backend server is running on http://localhost:8000</p>
-            </div>
-          )}
-          
-          {recommendations && (
-            <Recommendations 
-              recommendations={recommendations}
-              onAddToCart={addToCart}
-            />
-          )}
-        </div>
-        
-        <Cart 
-          items={cart}
-          onRemoveItem={removeFromCart}
-        />
+        <RecommendStreamDemo />
+        {/* <div className="container"> */}
+        {/**/}
+        {/*   <ProductPrompt */}
+        {/*     onGetRecommendations={handleGetRecommendations} */}
+        {/*     loading={loading} */}
+        {/*   /> */}
+        {/**/}
+        {/*   {error && ( */}
+        {/*     <div className="error-message"> */}
+        {/*       <p>Error: {error}</p> */}
+        {/*       <p> */}
+        {/*         Make sure your backend server is running on */}
+        {/*         http://localhost:8000 */}
+        {/*       </p> */}
+        {/*     </div> */}
+        {/*   )} */}
+        {/**/}
+        {/*   {recommendations && ( */}
+        {/*     <Recommendations */}
+        {/*       recommendations={recommendations} */}
+        {/*       onAddToCart={addToCart} */}
+        {/*     /> */}
+        {/*   )} */}
+        {/* </div> */}
+        {/**/}
+        {/* <Cart items={cart} onRemoveItem={removeFromCart} /> */}
       </main>
     </div>
   );
