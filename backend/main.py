@@ -27,7 +27,6 @@ It will print a sample recommendation summary for an example user goal.
 
 import json
 import os
-import requests
 from typing import TypedDict, List, Dict, Any
 import re
 
@@ -42,6 +41,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from services.tavily import get_product_pricing_and_links
 from dotenv import load_dotenv
 
 
@@ -62,20 +62,61 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 with open(DATA_FILE, "r", encoding="utf-8") as f:
     reddit_data: List[Dict[str, Any]] = json.load(f)
 
-# Build an in‑memory index: map each lowercased category to the list of
-# comment entries.  Each comment entry carries a product name, the free
-# text comment and an upvote count.  The mock data file uses the key
-# ``category`` to store a single category name for each post; this
-# implementation normalises the names to lowercase for easy lookup.
-category_index: Dict[str, List[Dict[str, Any]]] = {}
-for post in reddit_data:
-    cat = post.get("category")
-    if cat:
-        key = cat.lower().strip()
-        category_index.setdefault(key, []).extend(post.get("context", []))
 
-# Derive a comma‑separated list of available categories for the prompt.
-available_categories = ", ".join(cat.title() for cat in category_index.keys())
+# --- Pricing helpers ---
+from decimal import Decimal
+from urllib.parse import urlparse, urlencode, urlsplit, urlunsplit, parse_qsl
+
+
+CURRENCY_MAP = {"$": "USD", "usd": "USD", "€": "EUR", "eur": "EUR", "£": "GBP", "gbp": "GBP", "₹": "INR", "inr": "INR"}
+VENDOR_BY_DOMAIN = {
+    "amazon.com": "amazon", "bestbuy.com": "bestbuy", "walmart.com": "walmart",
+    "target.com": "target", "newegg.com": "newegg"
+}
+PRICE_PATTERNS = [
+    r"\$[\d,]+(?:\.\d+)?", r"[\d,]+(?:\.\d+)?\s?(?:usd|dollars?)",
+    r"€\s?[\d\.]+", r"£\s?[\d\.]+", r"(?:inr|₹)\s?[\d,]+(?:\.\d+)?",
+]
+
+def _domain_to_vendor(url: str) -> str:
+    try:
+        host = urlparse(url).netloc.split(":")[0].lower()
+        parts = host.split(".")
+        domain = ".".join(parts[-2:]) if len(parts) >= 2 else host
+        return VENDOR_BY_DOMAIN.get(domain, domain or "unknown")
+    except Exception:
+        return "unknown"
+
+def _parse_price_string(s: str | None) -> tuple[float | None, str]:
+    if not s:
+        return None, "USD"
+    s_low = s.lower()
+    currency = "USD"
+    for k, v in CURRENCY_MAP.items():
+        if k in s_low:
+            currency = v; break
+    m = None
+    for rx in PRICE_PATTERNS:
+        m = re.search(rx, s_low, flags=re.IGNORECASE)
+        if m: break
+    if not m: return None, currency
+    digits = re.sub(r"[^\d.]", "", m.group())
+    try:
+        return float(Decimal(digits)), currency
+    except Exception:
+        return None, currency
+
+# optional: trivial affiliate tagger
+AFFILIATE_TAG = os.getenv("AFFILIATE_TAG", "")  # e.g., "dartpick-20"
+def to_affiliate(url: str) -> str:
+    if not AFFILIATE_TAG or "amazon.com" not in url.lower():  # example impl
+        return url
+    scheme, netloc, path, query, frag = urlsplit(url)
+    q = dict(parse_qsl(query))
+    q["tag"] = AFFILIATE_TAG
+    return urlunsplit((scheme, netloc, path, urlencode(q), frag))
+
+
 
 
 # -----------------------------------------------------------------------------
@@ -99,6 +140,97 @@ class ToolkitState(TypedDict):
     category_plan: List[str]
     recommendations: Dict[str, str]
     final_output: str
+
+
+
+
+# Multi offer list function
+
+def offers_from_tavily(product_name: str, category: str) -> list[dict]:
+    """
+    Calls your existing get_product_pricing_and_links once,
+    returns a list of comparable offers: [{vendor, url, price, currency}, ...]
+    """
+    data = get_product_pricing_and_links(product_name, category)
+
+    print(data)
+
+    offers: list[dict] = []
+    # primary hit (purchase_link + price)
+    if data.get("purchase_link"):
+        price_val, currency = _parse_price_string(data.get("price"))
+        offers.append({
+            "vendor": _domain_to_vendor(data["purchase_link"]),
+            "url": data["purchase_link"],
+            "price": price_val,
+            "currency": currency,
+            "affiliate_url": to_affiliate(data["purchase_link"])
+        })
+
+    # secondary stores (may not have price yet)
+    for store in data.get("available_stores", [])[:5]:
+        url = store.get("url"); 
+        if not url: continue
+        # skip duplicates
+        if any(o["url"] == url for o in offers): 
+            continue
+        offers.append({
+            "vendor": _domain_to_vendor(url),
+            "url": url,
+            "price": None,
+            "currency": "USD",
+            "affiliate_url": to_affiliate(url)
+        })
+
+    # always return at least one placeholder to keep shape stable
+    return offers or [{"vendor": "unknown", "url": "", "price": None, "currency": "USD"}]
+
+
+
+# Pricing enricher
+def pricing_enricher(state: ToolkitState) -> ToolkitState:
+    recs = state.get("recommendations", {})
+    enriched = {}
+
+    for cat, info in recs.items():
+        # Shape A: {"top_comments": [ {product, comment, votes}, ... ]}
+        if isinstance(info, dict) and "top_comments" in info:
+            new_list = []
+            for c in info.get("top_comments", []):
+                offers = offers_from_tavily(product_name=c["product"], category=cat)
+                # choose best offer (lowest known price first, else first vendor)
+                priced = [o for o in offers if o.get("price") is not None]
+                best = min(priced, key=lambda o: o["price"]) if priced else (offers[0] if offers else None)
+                new_list.append({**c, "offers": offers, "best_offer": best})
+            enriched[cat] = {"top_comments": new_list}
+
+        # Shape B (naïve retriever): {"product": ..., "comment": ..., "votes": ...}
+        elif isinstance(info, dict) and info.get("product"):
+            offers = offers_from_tavily(product_name=info["product"], category=cat)
+            priced = [o for o in offers if o.get("price") is not None]
+            best = min(priced, key=lambda o: o["price"]) if priced else (offers[0] if offers else None)
+            enriched[cat] = {**info, "offers": offers, "best_offer": best}
+
+        else:
+            enriched[cat] = info  # passthrough (e.g., message only)
+
+    return {**state, "recommendations": enriched}
+
+
+# Build an in‑memory index: map each lowercased category to the list of
+# comment entries.  Each comment entry carries a product name, the free
+# text comment and an upvote count.  The mock data file uses the key
+# ``category`` to store a single category name for each post; this
+# implementation normalises the names to lowercase for easy lookup.
+category_index: Dict[str, List[Dict[str, Any]]] = {}
+for post in reddit_data:
+    cat = post.get("category")
+    if cat:
+        key = cat.lower().strip()
+        category_index.setdefault(key, []).extend(post.get("context", []))
+
+# Derive a comma‑separated list of available categories for the prompt.
+available_categories = ", ".join(cat.title() for cat in category_index.keys())
 
 
 # -----------------------------------------------------------------------------
@@ -908,116 +1040,6 @@ def ensemble_reddit_retriever(state: ToolkitState) -> ToolkitState:
 
 
 # -----------------------------------------------------------------------------
-# Tavily API integration for product pricing and purchase links
-# -----------------------------------------------------------------------------
-
-def get_product_pricing_and_links(product_name: str, category: str) -> Dict[str, Any]:
-    """Fetch product pricing and purchase links using Tavily API.
-    
-    Args:
-        product_name: Name of the product to search for
-        category: Product category for context
-        
-    Returns:
-        Dictionary containing pricing info and purchase links
-    """
-    if not TAVILY_API_KEY:
-        return {
-            "price": None,
-            "purchase_link": None,
-            "available_stores": [],
-            "error": "Tavily API key not configured"
-        }
-    
-    try:
-        # Search query for the product
-        search_query = f"{product_name} {category} price buy online"
-        
-        # Tavily search API call
-        url = "https://api.tavily.com/search"
-        headers = {
-            "Authorization": f"Bearer {TAVILY_API_KEY}",
-            "content-type": "application/json"
-        }
-        
-        payload = {
-            "query": search_query,
-            "search_depth": "basic",
-            "include_answer": True,
-            "include_raw_content": False,
-            "max_results": 5
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        # Extract pricing and purchase information
-        price_info = None
-        purchase_link = None
-        available_stores = []
-        
-        # Look for pricing information in the results
-        for result in data.get("results", []):
-            content = result.get("content", "").lower()
-            url = result.get("url", "")
-            
-            # Look for price patterns
-            import re
-            price_patterns = [
-                r'\$[\d,]+\.?\d*',
-                r'[\d,]+\.?\d*\s*(?:usd|dollars?)',
-                r'price[:\s]*\$?[\d,]+\.?\d*'
-            ]
-            
-            for pattern in price_patterns:
-                price_match = re.search(pattern, content)
-                if price_match and not price_info:
-                    price_info = price_match.group()
-                    break
-            
-            # Look for purchase links (Amazon, Best Buy, etc.)
-            if any(store in url.lower() for store in ['amazon', 'bestbuy', 'walmart', 'target', 'newegg']):
-                if not purchase_link:
-                    purchase_link = url
-                available_stores.append({
-                    "name": result.get("title", "Unknown Store"),
-                    "url": url
-                })
-        
-        # If no specific price found, try to extract from answer
-        if not price_info and data.get("answer"):
-            answer = data.get("answer", "").lower()
-            price_match = re.search(r'\$[\d,]+\.?\d*', answer)
-            if price_match:
-                price_info = price_match.group()
-        
-        return {
-            "price": price_info,
-            "purchase_link": purchase_link,
-            "available_stores": available_stores[:3],  # Limit to top 3 stores
-            "search_results": len(data.get("results", [])),
-            "error": None
-        }
-        
-    except requests.exceptions.RequestException as e:
-        return {
-            "price": None,
-            "purchase_link": None,
-            "available_stores": [],
-            "error": f"API request failed: {str(e)}"
-        }
-    except Exception as e:
-        return {
-            "price": None,
-            "purchase_link": None,
-            "available_stores": [],
-            "error": f"Unexpected error: {str(e)}"
-        }
-
-
-# -----------------------------------------------------------------------------
 # Synthesis logic
 # -----------------------------------------------------------------------------
 
@@ -1038,55 +1060,35 @@ synth_prompt = ChatPromptTemplate.from_messages([
     ),
 ])
 
-def synthesizer(state: ToolkitState) -> ToolkitState:
-    """Use the LLM to craft the final recommendation summary.
 
-    This node takes the recommendations dictionary and constructs a single
-    string with each category and its associated recommendation on its own
-    line.  It then feeds that into the LLM to generate a concise
-    explanation of why the recommended products meet the user's needs.  The
-    result is stored under `final_output`.
-    """
-    # Build a human‑readable string from the structured recommendations.  Each
-    # line contains the category name followed by the recommended product and
-    # a brief rationale.  If no product was found, include the fallback
-    # message.  This string is used to prompt the LLM for a friendly
-    # summary.
+def synthesizer(state: ToolkitState) -> ToolkitState:
     lines = []
     for cat, info in state.get("recommendations", {}).items():
-        # Handle the advanced retriever output (list of top comments)
         if isinstance(info, dict) and "top_comments" in info:
-            comments_list = info.get("top_comments", [])
-            if comments_list:
-                # Join multiple comments into one line separated by semicolons
-                comment_strs = []
-                for c in comments_list:
-                    comment_strs.append(
-                        f"{c['product']} (votes: {c['votes']}) – {c['comment']}"
-                    )
-                lines.append(f"{cat}: " + "; ".join(comment_strs))
-            else:
-                # Fallback message if no comments are found
-                lines.append(f"{cat}: {info.get('message', 'No recommendations found.')}")
-        # Handle the naïve retriever output (single comment)
+            items = []
+            for c in info.get("top_comments", []):
+                best = c.get("best_offer")
+                alt_cnt = max(0, len(c.get("offers", [])) - 1)
+                price_str = f" @ ${best['price']:.2f} from {best['vendor']}" if (best and best.get("price")) else ""
+                alt_str = f" (+{alt_cnt} more stores)" if alt_cnt else ""
+                items.append(f"{c['product']} (votes: {c['votes']}) – {c['comment']} {price_str}{alt_str}")
+            lines.append(f"{cat}: " + "; ".join(items) if items else f"{cat}: {info.get('message','No recommendations found.')}")
         elif isinstance(info, dict) and info.get("product"):
-            lines.append(
-                f"{cat}: {info['product']} (votes: {info['votes']}) – {info['comment']}"
-            )
+            best = info.get("best_offer")
+            alt_cnt = max(0, len(info.get("offers", [])) - 1)
+            price_str = f" @ ${best['price']:.2f} from {best['vendor']}" if (best and best.get("price")) else ""
+            alt_str = f" (+{alt_cnt} more stores)" if alt_cnt else ""
+            lines.append(f"{cat}: {info['product']} (votes: {info['votes']}) – {info['comment']}{price_str}{alt_str}")
         else:
-            # Use the custom message if provided, otherwise fall back to a generic notice
-            message = info.get("message") if isinstance(info, dict) else str(info)
-            lines.append(f"{cat}: {message}")
+            lines.append(f"{cat}: {info.get('message', 'No recommendations found.') if isinstance(info, dict) else str(info)}")
+
     recommendations_str = "\n".join(lines)
     chain = synth_prompt | llm
-    response = chain.invoke({
-        "user_goal": state["user_goal"],
-        "recommendations": recommendations_str,
-    })
-    return {
-        **state,
-        "final_output": response.content,
-    }
+    response = chain.invoke({"user_goal": state["user_goal"], "recommendations": recommendations_str})
+    return {**state, "final_output": response.content}
+
+
+
 
 
 # -----------------------------------------------------------------------------
@@ -1143,10 +1145,13 @@ else:
 
 builder.add_node("synthesizer", synthesizer)
 
+builder.add_node("pricing_enricher", pricing_enricher)
+
 # Define the order of execution: analysis → retrieval → synthesis
 builder.set_entry_point("goal_analyzer")
 builder.add_edge("goal_analyzer", "retriever")
-builder.add_edge("retriever", "synthesizer")
+builder.add_edge("retriever", "pricing_enricher")
+builder.add_edge("pricing_enricher", "synthesizer")
 builder.set_finish_point("synthesizer")
 
 graph = builder.compile()
