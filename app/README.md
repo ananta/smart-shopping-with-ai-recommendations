@@ -1,124 +1,73 @@
-# Smart Shopping AI - React Frontend
+# Welcome to your Lovable project
 
-A modern React application that provides an intuitive interface for the Smart Shopping AI recommendation system.
+## Project info
 
-## Features
+**URL**: https://lovable.dev/projects/26e5072b-fad9-4006-b8eb-e484173020a6
 
-- **Large Prompt Input**: Users can describe their shopping needs in natural language
-- **AI-Powered Recommendations**: Integrates with the backend API to get personalized product recommendations
-- **Shopping Cart**: Add recommended products to cart and manage your selections
-- **Modern UI**: Beautiful, responsive design with smooth animations
-- **Real-time Feedback**: Loading states and error handling for better UX
+## How can I edit this code?
 
-## Prerequisites
+There are several ways of editing your application.
 
-Make sure you have the backend server running. The React app expects the API to be available at `http://localhost:8000`.
+**Use Lovable**
 
-## Installation
+Simply visit the [Lovable Project](https://lovable.dev/projects/26e5072b-fad9-4006-b8eb-e484173020a6) and start prompting.
 
-1. Install dependencies:
-```bash
-npm install
+Changes made via Lovable will be committed automatically to this repo.
+
+**Use your preferred IDE**
+
+If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+
+The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+
+Follow these steps:
+
+```sh
+# Step 1: Clone the repository using the project's Git URL.
+git clone <YOUR_GIT_URL>
+
+# Step 2: Navigate to the project directory.
+cd <YOUR_PROJECT_NAME>
+
+# Step 3: Install the necessary dependencies.
+npm i
+
+# Step 4: Start the development server with auto-reloading and an instant preview.
+npm run dev
 ```
 
-## Running the Application
+**Edit a file directly in GitHub**
 
-1. Start the development server:
-```bash
-npm start
-```
+- Navigate to the desired file(s).
+- Click the "Edit" button (pencil icon) at the top right of the file view.
+- Make your changes and commit the changes.
 
-2. Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+**Use GitHub Codespaces**
 
-## Usage
+- Navigate to the main page of your repository.
+- Click on the "Code" button (green button) near the top right.
+- Select the "Codespaces" tab.
+- Click on "New codespace" to launch a new Codespace environment.
+- Edit files directly within the Codespace and commit and push your changes once you're done.
 
-1. **Enter Your Shopping Goal**: Use the large text area to describe what you're looking for. Be specific about your needs, budget, and preferences.
+## What technologies are used for this project?
 
-2. **Get Recommendations**: Click "Get Recommendations" to send your request to the AI backend.
+This project is built with:
 
-3. **Review Results**: The AI will provide:
-   - A summary of recommendations
-   - Specific product suggestions with community votes
-   - Categories that match your needs
+- Vite
+- TypeScript
+- React
+- shadcn-ui
+- Tailwind CSS
 
-4. **Add to Cart**: Click "Add to Cart" on any product you're interested in.
+## How can I deploy this project?
 
-5. **Manage Your Cart**: View your selected items in the cart sidebar and remove items as needed.
+Simply open [Lovable](https://lovable.dev/projects/26e5072b-fad9-4006-b8eb-e484173020a6) and click on Share -> Publish.
 
-## Example Prompts
+## Can I connect a custom domain to my Lovable project?
 
-- "I want to set up a budget home espresso station under $500"
-- "Looking for noise-cancelling headphones for travel under $200"
-- "Need an ultralight backpack for thru-hiking"
-- "Want a reliable laptop for programming and gaming"
+Yes, you can!
 
-## API Integration
+To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
-The app communicates with the backend API at `http://localhost:8000/recommend`:
-
-- **Method**: POST
-- **Content-Type**: application/json
-- **Body**: `{ "user_goal": "your shopping description" }`
-- **Response**: JSON with categories, recommendations, and summary
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── components/
-│   ├── ProductPrompt.tsx    # Large input area for user goals
-│   ├── Recommendations.tsx  # Displays AI recommendations
-│   └── Cart.tsx            # Shopping cart management
-├── App.tsx                 # Main application component
-└── App.css                 # Modern styling
-```
-
-### Key Components
-
-- **ProductPrompt**: Handles user input and API calls
-- **Recommendations**: Displays AI recommendations with add-to-cart functionality
-- **Cart**: Manages selected products with remove/clear options
-
-### Styling
-
-The app uses modern CSS with:
-- Gradient backgrounds
-- Card-based layouts
-- Smooth animations and transitions
-- Responsive design for mobile devices
-- Glassmorphism effects
-
-## Troubleshooting
-
-### Backend Connection Issues
-
-If you see connection errors:
-
-1. Make sure the backend server is running on `http://localhost:8000`
-2. Check that the API endpoint `/recommend` is available
-3. Verify your backend is configured to accept CORS requests from `http://localhost:3000`
-
-### Common Issues
-
-- **CORS Errors**: The backend needs to allow requests from the React app
-- **API Timeout**: Large requests might take time; the UI shows loading states
-- **No Recommendations**: Try being more specific in your product description
-
-## Building for Production
-
-To create a production build:
-
-```bash
-npm run build
-```
-
-This creates an optimized build in the `build` folder that can be deployed to any static hosting service.
-
-## Technologies Used
-
-- **React 18** with TypeScript
-- **Modern CSS** with Flexbox and Grid
-- **Fetch API** for backend communication
-- **Responsive Design** for all screen sizes
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
