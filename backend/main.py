@@ -1525,7 +1525,7 @@ app = FastAPI()
 # Add CORS middleware to allow requests from React app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000","http://localhost:8080"],
+    allow_origins=["http://localhost:3000","http://localhost:8080", "https://dartpick.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
